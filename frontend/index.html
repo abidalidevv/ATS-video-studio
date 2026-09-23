@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>⚡ Avatar Storyteller Engine — AI Video Generator</title>
+  <meta name="description" content="Ultra-fast single-pass GPU video generator for faceless YouTube storytelling channels. Avatar, local B-Roll, kinetic subtitles." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='28'>⚡</text></svg>" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+
+<body>
+<!-- Animated Background -->
+<div class="bg-canvas" aria-hidden="true">
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
+  <div class="bg-orb bg-orb-3"></div>
+</div>
+
+<div class="app-wrapper">
+
+  <!-- ═══ Header ═══ -->
+  <header class="app-header">
+    <div class="header-brand">
+      <div class="brand-icon">⚡</div>
+      <div>
+        <div class="brand-name">Avatar Storyteller Engine</div>
+      </div>
+      <span class="brand-badge">GPU Turbo</span>
+    </div>
+
+    <div class="header-actions">
+      <div id="gpu-banner-mini" class="gpu-banner" style="padding:6px 14px; margin:0;">
+        <div id="gpu-dot" class="gpu-indicator cpu"></div>
+        <span id="gpu-label-text" class="gpu-value" style="font-size:0.75rem">Detecting...</span>
+      </div>
+      <button class="btn btn-ghost" onclick="openOutputsPanel()" id="btn-outputs" title="View rendered videos">
+        📂 Outputs
+      </button>
+      <button class="btn btn-ghost" onclick="openSettingsPanel()" id="btn-settings" title="Settings">
+        ⚙️
+      </button>
+    </div>
+  </header>
+
+  <!-- ═══ Main Content ═══ -->
+  <main class="main-content">
+
+    <!-- ── STEP 1: Voiceover & Audio Tuning ──────────────────────────────── -->
+    <div class="step-card animate-fade-in">
+      <div class="step-header">
+        <div class="step-number">1</div>
+        <div>
+          <div class="step-title">🎙️ Voiceover &amp; Audio DSP Tuning</div>
+          <div class="step-subtitle">MP3 · WAV · M4A supported</div>
+        </div>
+      </div>
+      <div class="step-body">
+
+        <!-- Drop zone -->
+        <div class="drop-zone" id="voiceover-dropzone" ondrop="handleVoiceoverDrop(event)" ondragover="onDragOver(event, this)" ondragleave="onDragLeave(this)">
+          <input type="file" id="voiceover-file-input" accept=".mp3,.wav,.m4a,.aac,.ogg" onchange="handleVoiceoverFile(this.files[0])" />
+          <span class="drop-icon">🎵</span>
+          <div class="drop-title">Drag &amp; Drop Voiceover Audio</div>
+          <div class="drop-hint">MP3, WAV, M4A, AAC · Long-form 30–60 min files supported</div>
+        </div>
+
+        <div id="voiceover-loaded" class="file-loaded" style="display:none;">
+          <span class="file-loaded-icon">🎵</span>
+          <div>
+            <div class="file-loaded-name" id="voiceover-filename">—</div>
+            <div class="file-loaded-meta" id="voiceover-duration">—</div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <!-- Pitch Slider -->
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <label class="slider-label" for="pitch-slider">🎚️ Voice Pitch</label>
+              <span class="slider-value-badge" id="pitch-display">0 st</span>
+            </div>
+            <input type="range" id="pitch-slider" min="-4" max="4" step="0.5" value="0"
+                   oninput="updateSlider(this, 'pitch-display', v => v > 0 ? '+'+v+' st' : v+' st')"
+                   aria-label="Voice pitch in semitones" />
+            <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);">
+              <span>-4st Deep</span><span>Natural</span><span>+4st High</span>
+            </div>
+          </div>
+
+          <!-- Speed Slider -->
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <label class="slider-label" for="speed-slider">⏱️ Voice Speed</label>
+              <span class="slider-value-badge" id="speed-display">1.0x</span>
+            </div>
+            <input type="range" id="speed-slider" min="0.8" max="1.25" step="0.05" value="1.0"
+                   oninput="updateSlider(this, 'speed-display', v => parseFloat(v).toFixed(2)+'x')"
+                   aria-label="Voice playback speed" />
+            <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);">
+              <span>0.8x Slow</span><span>1.0x Normal</span><span>1.25x Fast</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Niche selector -->
+        <div class="slider-group">
+          <label class="slider-label">🎭 Content Niche (for subtitle style &amp; fallback transcription)</label>
+          <select id="niche-select" class="text-input" aria-label="Content niche">
+            <option value="Stoicism &amp; Philosophy">🏛️ Stoicism &amp; Ancient Philosophy</option>
+            <option value="Dark Psychology">🧠 Dark Psychology &amp; Mind Science</option>
+            <option value="Motivation">🔥 Motivation, Grit &amp; Self-Mastery</option>
+            <option value="True Crime">🔍 True Crime &amp; Historical Investigations</option>
+            <option value="Business">💼 Business Case Studies &amp; Moguls</option>
+          </select>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── STEP 2: Avatar / Author Portrait ──────────────────────────────── -->
+    <div class="step-card animate-fade-in" style="animation-delay:0.05s;">
+      <div class="step-header">
+        <div class="step-number">2</div>
+        <div>
+          <div class="step-title">🖼️ Author / Avatar Portrait</div>
+          <div class="step-subtitle">PNG cutout recommended · JPG supported</div>
+        </div>
+      </div>
+      <div class="step-body">
+
+        <div class="avatar-preview-section">
+          <!-- Avatar preview -->
+          <div class="avatar-preview-wrap" id="avatar-preview-wrap">
+            <span class="avatar-preview-placeholder" id="avatar-placeholder">👤</span>
+            <img id="avatar-preview-img" alt="Avatar preview" />
+          </div>
+
+          <div class="avatar-controls">
+            <!-- Upload -->
+            <div class="drop-zone" id="avatar-dropzone" style="padding:var(--sp-lg);"
+                 ondrop="handleAvatarDrop(event)" ondragover="onDragOver(event, this)" ondragleave="onDragLeave(this)">
+              <input type="file" id="avatar-file-input" accept=".png,.jpg,.jpeg,.webp" onchange="handleAvatarFile(this.files[0])" />
+              <span class="drop-icon" style="font-size:1.8rem;">📸</span>
+              <div class="drop-title" style="font-size:0.85rem;">Upload Portrait Image</div>
+              <div class="drop-hint">PNG with transparent background gives best results</div>
+            </div>
+
+            <div id="avatar-loaded" class="file-loaded" style="display:none;margin-top:var(--sp-sm);">
+              <span class="file-loaded-icon">✅</span>
+              <div>
+                <div class="file-loaded-name" id="avatar-filename">—</div>
+                <div class="file-loaded-meta" id="avatar-info">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <!-- Placement -->
+          <div class="slider-group">
+            <label class="slider-label">📍 Avatar Placement</label>
+            <div class="btn-group" id="position-group" role="radiogroup" aria-label="Avatar placement">
+              <button class="btn-option" id="pos-left"   onclick="setPosition('left')"   aria-pressed="false">⬅️ Left (40%)</button>
+              <button class="btn-option" id="pos-center" onclick="setPosition('center')" aria-pressed="false">⏺️ Center</button>
+              <button class="btn-option active" id="pos-right"  onclick="setPosition('right')"  aria-pressed="true">➡️ Right (40%)</button>
+            </div>
+          </div>
+
+          <!-- Stroke Color -->
+          <div class="slider-group">
+            <label class="slider-label">✨ Outer Stroke / Glow Border</label>
+            <div class="btn-group" id="stroke-group" role="radiogroup" aria-label="Stroke color">
+              <button class="btn-option active" id="stroke-white"  onclick="setStroke('white')"  aria-pressed="true">⚪ White</button>
+              <button class="btn-option" id="stroke-gold"   onclick="setStroke('gold')"   aria-pressed="false">🟡 Gold</button>
+              <button class="btn-option" id="stroke-cyan"   onclick="setStroke('cyan')"   aria-pressed="false">🔵 Cyan</button>
+              <button class="btn-option" id="stroke-none"   onclick="setStroke('none')"   aria-pressed="false">✖ None</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stroke Width -->
+        <div class="slider-group">
+          <div class="slider-label-row">
+            <label class="slider-label" for="stroke-width-slider">🖊️ Stroke Width</label>
+            <span class="slider-value-badge" id="stroke-width-display">10px</span>
+          </div>
+          <input type="range" id="stroke-width-slider" min="4" max="24" step="2" value="10"
+                 oninput="updateSlider(this, 'stroke-width-display', v => v+'px')"
+                 aria-label="Stroke border width in pixels" />
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── STEP 3: Local B-Roll Pool & Cinematic Settings ────────────────── -->
+    <div class="step-card animate-fade-in" style="animation-delay:0.1s;">
+      <div class="step-header">
+        <div class="step-number">3</div>
+        <div>
+          <div class="step-title">🎬 Local B-Roll Pool &amp; Cinematic Motion</div>
+          <div class="step-subtitle">Zero API latency · Strictly non-repeating · Slow-Mo Documentary Look</div>
+        </div>
+      </div>
+      <div class="step-body">
+
+        <!-- Folder picker -->
+        <div>
+          <label class="slider-label" for="broll-folder-input">📂 Local B-Roll Folder Path</label>
+          <div class="input-group" style="margin-top:var(--sp-sm);">
+            <input type="text" id="broll-folder-input" class="text-input"
+                   placeholder="D:/Stock_Clips/Dark_Aesthetic_1080p"
+                   oninput="resetFolderStats()"
+                   aria-label="B-Roll folder path" />
+            <button class="btn btn-secondary" onclick="scanFolder()" id="btn-scan" title="Scan folder for clips">
+              🔍 Scan
+            </button>
+          </div>
+        </div>
+
+        <!-- Folder stats -->
+        <div id="folder-stats" class="folder-stats" style="display:none;">
+          <div class="stat-item">
+            <div class="stat-value" id="stat-clip-count">—</div>
+            <div class="stat-label">Clips Found</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value" id="stat-size">—</div>
+            <div class="stat-label">Total Size</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value" id="stat-clips-needed">—</div>
+            <div class="stat-label">Clips Needed</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-value" id="stat-wrap-status">✅</div>
+            <div class="stat-label">No Repeats</div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <!-- Stock Speed -->
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <label class="slider-label" for="stock-speed-slider">🐢 Stock Speed (Slow-Mo)</label>
+              <span class="slider-value-badge" id="stock-speed-display">0.75x</span>
+            </div>
+            <input type="range" id="stock-speed-slider" min="0.5" max="1.0" step="0.05" value="0.75"
+                   oninput="updateSlider(this, 'stock-speed-display', v => parseFloat(v).toFixed(2)+'x'); updateEstimate();"
+                   aria-label="Stock footage playback speed" />
+            <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);">
+              <span>0.5x Cinematic</span><span>0.75x Doc</span><span>1.0x Normal</span>
+            </div>
+          </div>
+
+          <!-- Blur -->
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <label class="slider-label" for="blur-slider">🌫️ Background Blur</label>
+              <span class="slider-value-badge" id="blur-display">12px</span>
+            </div>
+            <input type="range" id="blur-slider" min="0" max="30" step="2" value="12"
+                   oninput="updateSlider(this, 'blur-display', v => v+'px')"
+                   aria-label="Background blur radius in pixels" />
+            <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);">
+              <span>0px Off</span><span>15px Medium</span><span>30px Heavy</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dark Tint -->
+        <div class="slider-group">
+          <div class="slider-label-row">
+            <label class="slider-label" for="tint-slider">🌑 Background Dark Tint</label>
+            <span class="slider-value-badge" id="tint-display">25%</span>
+          </div>
+          <input type="range" id="tint-slider" min="0" max="80" step="5" value="25"
+                 oninput="updateSlider(this, 'tint-display', v => v+'%')"
+                 aria-label="Background dark tint percentage" />
+          <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);">
+            <span>0% None</span>
+            <span style="color:var(--accent-secondary);font-size:0.7rem;">Avatar &amp; Captions stay 100% crisp</span>
+            <span>80% Dark</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── STEP 4: Adaptive Caption Styles ───────────────────────────────── -->
+    <div class="step-card animate-fade-in" style="animation-delay:0.15s;">
+      <div class="step-header">
+        <div class="step-number">4</div>
+        <div>
+          <div class="step-title">💬 Adaptive Caption Styles</div>
+          <div class="step-subtitle">Auto-positioned opposite to avatar · CapCut kinetic highlight</div>
+        </div>
+      </div>
+      <div class="step-body">
+
+        <div id="caption-position-indicator" style="padding:var(--sp-md);background:var(--glass-strong);border-radius:var(--radius-md);border:1px solid var(--border-accent);">
+          <div style="font-size:0.8rem;color:var(--text-accent);font-weight:600;">⚡ Smart Auto-Positioning Active</div>
+          <div id="caption-pos-desc" style="font-size:0.75rem;color:var(--text-secondary);margin-top:4px;">
+            Avatar Right → Captions placed in LEFT half (MarginR=960)
+          </div>
+        </div>
+
+        <label class="slider-label" style="margin-bottom:var(--sp-sm);">🎨 Caption Style Preset</label>
+        <div class="preset-grid" id="preset-grid" role="radiogroup" aria-label="Caption preset">
+          <div class="preset-card active" data-preset="capcut_yellow" onclick="selectPreset(this)" tabindex="0" aria-pressed="true">
+            <span class="preset-emoji">🔥</span>
+            <div class="preset-name">CapCut Viral Yellow</div>
+          </div>
+          <div class="preset-card" data-preset="hormozi_green" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
+            <span class="preset-emoji">💪</span>
+            <div class="preset-name">Hormozi Green</div>
+          </div>
+          <div class="preset-card" data-preset="neon_cyber" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
+            <span class="preset-emoji">🌐</span>
+            <div class="preset-name">Neon Cyber</div>
+          </div>
+          <div class="preset-card" data-preset="dark_stoic" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
+            <span class="preset-emoji">🏛️</span>
+            <div class="preset-name">Stoic Slate</div>
+          </div>
+          <div class="preset-card" data-preset="ali_abdaal" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
+            <span class="preset-emoji">📚</span>
+            <div class="preset-name">Ali Abdaal</div>
+          </div>
+          <div class="preset-card" data-preset="iman_gadzhi" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
+            <span class="preset-emoji">👑</span>
+            <div class="preset-name">Luxury Gold</div>
+          </div>
+          <div class="preset-card" data-preset="tiktok_violet" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
+            <span class="preset-emoji">📱</span>
+            <div class="preset-name">TikTok Violet</div>
+          </div>
+          <div class="preset-card" data-preset="red_fire" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
+            <span class="preset-emoji">🔴</span>
+            <div class="preset-name">Red Fire</div>
+          </div>
+          <div class="preset-card" data-preset="podcast_pill" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
+            <span class="preset-emoji">🎙️</span>
+            <div class="preset-name">Podcast Pill</div>
+          </div>
+          <div class="preset-card" data-preset="clean_minimal" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
+            <span class="preset-emoji">🧊</span>
+            <div class="preset-name">Clean Minimal</div>
+          </div>
+          <div class="preset-card" data-preset="mrbeast_punch" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
+            <span class="preset-emoji">⚡</span>
+            <div class="preset-name">MrBeast Gold</div>
+          </div>
+          <div class="preset-card" data-preset="streamer_lime" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
+            <span class="preset-emoji">🎮</span>
+            <div class="preset-name">Streamer Lime</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── STEP 5: Render ─────────────────────────────────────────────────── -->
+    <div class="render-section animate-fade-in" style="animation-delay:0.2s;">
+      
+      <!-- Estimates -->
+      <div class="render-estimate" id="render-estimate">
+        <div class="estimate-item">
+          <div class="estimate-value" id="est-duration">—</div>
+          <div class="estimate-label">Voiceover Duration</div>
+        </div>
+        <div class="estimate-item">
+          <div class="estimate-value" id="est-clips">—</div>
+          <div class="estimate-label">B-Roll Clips</div>
+        </div>
+        <div class="estimate-item">
+          <div class="estimate-value" id="est-encoder">—</div>
+          <div class="estimate-label">GPU Encoder</div>
+        </div>
+        <div class="estimate-item">
+          <div class="estimate-value" id="est-render-time">—</div>
+          <div class="estimate-label">Est. Render Time</div>
+        </div>
+      </div>
+
+      <!-- Output filename -->
+      <div class="slider-group" style="margin-bottom:var(--sp-lg);">
+        <label class="slider-label" for="output-filename">📄 Output Filename</label>
+        <input type="text" id="output-filename" class="text-input" style="margin-top:var(--sp-sm);"
+               placeholder="my_stoic_video.mp4"
+               aria-label="Output video filename" />
+      </div>
+
+      <!-- Render Button -->
+      <button class="btn btn-render" id="btn-render" onclick="startRender()" aria-label="Start GPU render">
+        🚀 RENDER 1-HOUR VIDEO (GPU TURBO)
+      </button>
+
+      <!-- Progress -->
+      <div class="progress-section" id="progress-section">
+        <div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" id="progress-bar" style="width:0%"></div>
+          </div>
+          <div class="progress-status" style="margin-top:var(--sp-sm);">
+            <span class="progress-message" id="progress-message">Starting...</span>
+            <span class="progress-pct" id="progress-pct">0%</span>
+          </div>
+        </div>
+
+        <div class="log-output" id="log-output">Ready to render...\n</div>
+      </div>
+
+      <!-- Success -->
+      <div class="success-banner" id="success-banner">
+        <span class="success-banner-icon">🎉</span>
+        <div>
+          <div class="success-banner-title" id="success-title">Video Rendered Successfully!</div>
+          <div class="success-banner-meta" id="success-meta">—</div>
+          <div class="success-actions">
+            <button class="btn btn-secondary" onclick="openOutputFolder()">📂 Open Folder</button>
+            <button class="btn btn-ghost"     onclick="resetForNewRender()">🔄 New Render</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /render-section -->
+
+  </main><!-- /main-content -->
+
+</div><!-- /app-wrapper -->
+
+<!-- ═══ Outputs Panel ═══ -->
+<div class="outputs-panel" id="outputs-panel" onclick="closeOutputsPanel(event)">
+  <div class="outputs-modal" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--sp-lg);">
+      <h2 style="font-family:var(--font-display);font-size:1.1rem;font-weight:700;">📂 Rendered Videos</h2>
+      <button class="btn btn-ghost" onclick="closeOutputsPanel()" aria-label="Close">✕</button>
+    </div>
+    <div id="outputs-list">
+      <div style="color:var(--text-muted);text-align:center;padding:var(--sp-2xl);">Loading outputs...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Settings Panel ═══ -->
+<div class="outputs-panel" id="settings-panel" onclick="closeSettingsPanel(event)">
+  <div class="outputs-modal" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--sp-lg);">
+      <h2 style="font-family:var(--font-display);font-size:1.1rem;font-weight:700;">⚙️ Settings</h2>
+      <button class="btn btn-ghost" onclick="closeSettingsPanel()" aria-label="Close">✕</button>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:var(--sp-lg);">
+      <div class="slider-group">
+        <label class="slider-label">🔑 Groq API Key (Whisper Transcription)</label>
+        <input type="password" id="settings-groq-key" class="text-input" style="margin-top:var(--sp-sm);"
+               placeholder="gsk_..." autocomplete="off" />
+      </div>
+
+      <div class="slider-group">
+        <label class="slider-label">🎬 Hardware Encoder</label>
+        <select id="settings-encoder" class="text-input" style="margin-top:var(--sp-sm);">
+          <option value="auto">🔍 Auto-Detect (Recommended)</option>
+          <option value="h264_nvenc">⚡ NVIDIA NVENC (h264_nvenc)</option>
+          <option value="h264_qsv">💙 Intel Quick Sync (h264_qsv)</option>
+          <option value="h264_amf">🔴 AMD AMF (h264_amf)</option>
+          <option value="libx264">🖥️ CPU libx264 (Slowest)</option>
+        </select>
+      </div>
+
+      <div class="slider-group">
+        <label class="slider-label">📁 Custom Output Folder</label>
+        <input type="text" id="settings-output-dir" class="text-input" style="margin-top:var(--sp-sm);"
+               placeholder="Leave empty for default data/output/" />
+      </div>
+
+      <button class="btn btn-primary" onclick="saveSettings()" style="margin-top:var(--sp-sm);">
+        💾 Save Settings
+      </button>
+      <div id="settings-msg" style="font-size:0.8rem;color:var(--accent-green);display:none;">✅ Settings saved!</div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

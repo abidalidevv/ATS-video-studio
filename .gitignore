@@ -1,0 +1,39 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary, caches & generated media
+data/temp/*
+!data/temp/.gitkeep
+data/output/*
+!data/output/.gitkeep
+data/avatars/*
+!data/avatars/.gitkeep
+
+# Large media
+*.mp4
+*.wav
+*.m4a
+*.mov
+
+# Dependencies & Virtual Environment
+.venv/
+env/
+venv/
+
+# Binaries
+bin/*.exe
+
+# System & Editor
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Secrets & Local Credentials
+api.md
+api.txt
+.env
+data/settings.json
+
