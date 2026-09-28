@@ -169,6 +169,56 @@ def calculate_output_duration(
     return input_duration / speed_rate
 
 
+def mix_voiceover_and_bgm(
+    voiceover_path: str,
+    bgm_path: str,
+    output_path: str,
+    bgm_volume: float = 0.07,
+) -> str:
+    """
+    Mixes voiceover audio (100% volume) with background music (default 7% volume).
+    Loops BGM if voiceover is longer. Stops exactly when voiceover ends (duration=first).
+    
+    Args:
+        voiceover_path: Path to processed voiceover audio.
+        bgm_path:        Path to background music file.
+        output_path:     Destination path for mixed audio.
+        bgm_volume:      Volume multiplier for BGM (default 0.07 = 7%).
+    
+    Returns:
+        Path to output_path if successful, or original voiceover_path on failure.
+    """
+    if not bgm_path or not Path(bgm_path).exists():
+        return voiceover_path
+
+    ffmpeg = find_ffmpeg()
+    vol = max(0.005, min(0.50, float(bgm_volume)))
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    # -stream_loop -1 loops background track infinitely
+    # amix combines voiceover and background music, cutting off when voiceover ends
+    cmd = [
+        ffmpeg, "-y",
+        "-i", voiceover_path,
+        "-stream_loop", "-1",
+        "-i", bgm_path,
+        "-filter_complex",
+        f"[1:a]volume={vol:.3f}[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[aout]",
+        "-map", "[aout]",
+        "-c:a", "libmp3lame", "-b:a", "192k",
+        output_path
+    ]
+
+    print(f"[AudioDSP] 🎵 Mixing BGM ({vol*100:.1f}% volume) with voiceover...")
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        print(f"[AudioDSP] ⚠️ BGM mix failed: {res.stderr} — using voiceover only")
+        return voiceover_path
+
+    print(f"[AudioDSP] ✅ BGM successfully mixed into: {output_path}")
+    return output_path
+
+
 # ── CLI Test Entrypoint ───────────────────────────────────────────────────────
 if __name__ == "__main__":
     import sys

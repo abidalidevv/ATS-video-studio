@@ -6,6 +6,10 @@
   <title>⚡ Avatar Storyteller Engine — AI Video Generator</title>
   <meta name="description" content="Ultra-fast single-pass GPU video generator for faceless YouTube storytelling channels. Avatar, local B-Roll, kinetic subtitles." />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='28'>⚡</text></svg>" />
+  <!-- Google Fonts for Viral Subtitle & Visualizer Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Bangers&family=Cinzel:wght@700;900&family=Inter:wght@700;900&family=Luckiest+Guy&family=Montserrat:wght@800;900&family=Oswald:wght@700&family=Outfit:wght@700;900&family=Poppins:wght@700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 
@@ -34,6 +38,9 @@
         <div id="gpu-dot" class="gpu-indicator cpu"></div>
         <span id="gpu-label-text" class="gpu-value" style="font-size:0.75rem">Detecting...</span>
       </div>
+      <a href="/static/docs.html" target="_blank" class="btn btn-ghost" id="btn-docs" title="User Documentation & API Guide" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+        📖 Docs
+      </a>
       <button class="btn btn-ghost" onclick="openOutputsPanel()" id="btn-outputs" title="View rendered videos">
         📂 Outputs
       </button>
@@ -46,8 +53,38 @@
   <!-- ═══ Main Content ═══ -->
   <main class="main-content">
 
+    <!-- ── Wizard Navigation Stepper Bar ─────────────────────────────── -->
+    <div class="wizard-stepper-container">
+      <nav class="wizard-stepper" id="wizard-stepper" aria-label="Wizard Steps">
+        <button type="button" class="stepper-tab active" id="tab-step-1" onclick="goToWizardStep(1)" title="Step 1: Voiceover &amp; Background Music">
+          <span class="stepper-num">1</span>
+          <span class="stepper-label">🎙️ Voice &amp; Music</span>
+        </button>
+        <div class="stepper-divider"></div>
+        <button type="button" class="stepper-tab" id="tab-step-2" onclick="goToWizardStep(2)" title="Step 2: Author / Avatar Portrait">
+          <span class="stepper-num">2</span>
+          <span class="stepper-label">🖼️ Author Avatar</span>
+        </button>
+        <div class="stepper-divider"></div>
+        <button type="button" class="stepper-tab" id="tab-step-3" onclick="goToWizardStep(3)" title="Step 3: B-Roll Footage &amp; Background">
+          <span class="stepper-num">3</span>
+          <span class="stepper-label">📂 B-Roll Atmosphere</span>
+        </button>
+        <div class="stepper-divider"></div>
+        <button type="button" class="stepper-tab" id="tab-step-4" onclick="goToWizardStep(4)" title="Step 4: Subtitles &amp; Audio Visualizer">
+          <span class="stepper-num">4</span>
+          <span class="stepper-label">💬 Subtitles &amp; Player</span>
+        </button>
+        <div class="stepper-divider"></div>
+        <button type="button" class="stepper-tab" id="tab-step-5" onclick="goToWizardStep(5)" title="Step 5: 16:9 Studio Canvas &amp; Render">
+          <span class="stepper-num">5</span>
+          <span class="stepper-label">🎬 Studio &amp; Render</span>
+        </button>
+      </nav>
+    </div>
+
     <!-- ── STEP 1: Voiceover & Audio Tuning ──────────────────────────────── -->
-    <div class="step-card animate-fade-in">
+    <div class="step-card wizard-step active" id="wizard-step-1">
       <div class="step-header">
         <div class="step-number">1</div>
         <div>
@@ -57,69 +94,149 @@
       </div>
       <div class="step-body">
 
-        <!-- Drop zone -->
+        <!-- Compact Voiceover Drop Zone (shows selected file INSIDE the zone) -->
         <div class="drop-zone" id="voiceover-dropzone" ondrop="handleVoiceoverDrop(event)" ondragover="onDragOver(event, this)" ondragleave="onDragLeave(this)">
-          <input type="file" id="voiceover-file-input" accept=".mp3,.wav,.m4a,.aac,.ogg" onchange="handleVoiceoverFile(this.files[0])" />
-          <span class="drop-icon">🎵</span>
-          <div class="drop-title">Drag &amp; Drop Voiceover Audio</div>
-          <div class="drop-hint">MP3, WAV, M4A, AAC · Long-form 30–60 min files supported</div>
-        </div>
+          <input type="file" id="voiceover-file-input" accept=".mp3,.wav,.m4a,.aac,.ogg,.flac" onclick="this.value=null" onchange="handleVoiceoverFile(this.files[0])" />
+          
+          <!-- State A: Empty Prompt -->
+          <div class="drop-content-layout" id="voiceover-prompt">
+            <div class="drop-icon-compact">🎙️</div>
+            <div class="drop-text-col">
+              <div class="drop-title-compact">Choose or Drag Voiceover Audio</div>
+              <div class="drop-hint-compact">MP3, WAV, M4A · 30–60 min long-form supported</div>
+            </div>
+            <div class="drop-badge-action">📁 Browse File</div>
+          </div>
 
-        <div id="voiceover-loaded" class="file-loaded" style="display:none;">
-          <span class="file-loaded-icon">🎵</span>
-          <div>
-            <div class="file-loaded-name" id="voiceover-filename">—</div>
-            <div class="file-loaded-meta" id="voiceover-duration">—</div>
+          <!-- State B: Loaded File (inside the dropzone itself) -->
+          <div class="drop-content-layout" id="voiceover-loaded-inner" style="display:none;">
+            <div class="drop-icon-compact" style="background:rgba(16,185,129,0.15);color:#34d399;">✅</div>
+            <div class="drop-text-col">
+              <div class="drop-title-compact" id="voiceover-filename" style="color:#34d399;font-weight:700;">—</div>
+              <div class="drop-hint-compact" id="voiceover-duration" style="color:var(--text-secondary);">—</div>
+            </div>
+            <div class="drop-badge-action">🔄 Change</div>
           </div>
         </div>
 
-        <div class="two-col">
-          <!-- Pitch Slider -->
-          <div class="slider-group">
-            <div class="slider-label-row">
-              <label class="slider-label" for="pitch-slider">🎚️ Voice Pitch</label>
-              <span class="slider-value-badge" id="pitch-display">0 st</span>
+        <!-- Sleek Compact Audio DSP Tuning Bar (Pitch & Speed) -->
+        <div class="audio-tuning-bar">
+          <!-- Voice Pitch -->
+          <div class="tuning-card">
+            <div class="tuning-top">
+              <div class="tuning-title-row">
+                <span class="tuning-title">🎚️ Voice Pitch</span>
+                <span class="tuning-val-badge" id="pitch-display">0 st (Natural)</span>
+              </div>
+              <div class="tuning-quick-pills">
+                <button type="button" class="tuning-pill" id="pitch-pill-deep" onclick="setPitch(-2)">Deep (-2)</button>
+                <button type="button" class="tuning-pill active" id="pitch-pill-natural" onclick="setPitch(0)">Natural (0)</button>
+                <button type="button" class="tuning-pill" id="pitch-pill-high" onclick="setPitch(2)">High (+2)</button>
+              </div>
             </div>
-            <input type="range" id="pitch-slider" min="-4" max="4" step="0.5" value="0"
-                   oninput="updateSlider(this, 'pitch-display', v => v > 0 ? '+'+v+' st' : v+' st')"
+            <input type="range" id="pitch-slider" class="sleek-slider" min="-4" max="4" step="0.5" value="0"
+                   oninput="onPitchSliderChange(this)"
                    aria-label="Voice pitch in semitones" />
-            <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);">
-              <span>-4st Deep</span><span>Natural</span><span>+4st High</span>
-            </div>
           </div>
 
-          <!-- Speed Slider -->
-          <div class="slider-group">
-            <div class="slider-label-row">
-              <label class="slider-label" for="speed-slider">⏱️ Voice Speed</label>
-              <span class="slider-value-badge" id="speed-display">1.0x</span>
+          <!-- Voice Speed -->
+          <div class="tuning-card">
+            <div class="tuning-top">
+              <div class="tuning-title-row">
+                <span class="tuning-title">⏱️ Voice Speed</span>
+                <span class="tuning-val-badge" id="speed-display">1.00x (Normal)</span>
+              </div>
+              <div class="tuning-quick-pills">
+                <button type="button" class="tuning-pill" id="speed-pill-slow" onclick="setSpeed(0.9)">0.9x</button>
+                <button type="button" class="tuning-pill active" id="speed-pill-normal" onclick="setSpeed(1.0)">1.0x</button>
+                <button type="button" class="tuning-pill" id="speed-pill-fast" onclick="setSpeed(1.15)">1.15x</button>
+              </div>
             </div>
-            <input type="range" id="speed-slider" min="0.8" max="1.25" step="0.05" value="1.0"
-                   oninput="updateSlider(this, 'speed-display', v => parseFloat(v).toFixed(2)+'x')"
+            <input type="range" id="speed-slider" class="sleek-slider" min="0.8" max="1.25" step="0.05" value="1.0"
+                   oninput="onSpeedSliderChange(this)"
                    aria-label="Voice playback speed" />
-            <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);">
-              <span>0.8x Slow</span><span>1.0x Normal</span><span>1.25x Fast</span>
-            </div>
           </div>
         </div>
 
-        <!-- Niche selector -->
-        <div class="slider-group">
-          <label class="slider-label">🎭 Content Niche (for subtitle style &amp; fallback transcription)</label>
-          <select id="niche-select" class="text-input" aria-label="Content niche">
+        <!-- Background Music (BGM) Optional Section -->
+        <div class="bgm-container-card" style="margin-top:var(--sp-sm);padding:10px 14px;">
+          <div class="bgm-header-row" style="margin-bottom:6px;">
+            <div style="font-weight:700;font-size:0.86rem;color:var(--text-primary);display:flex;align-items:center;gap:6px;">
+              <span>🎶</span> Background Music / Ambient Track <span style="font-size:0.72rem;color:var(--text-muted);font-weight:normal;">(Optional)</span>
+            </div>
+            <span class="bgm-pill-badge" style="font-size:0.7rem;">7% Ambient Mix</span>
+          </div>
+
+          <div class="drop-zone" id="bgm-dropzone" ondrop="handleBgmDrop(event)" ondragover="onDragOver(event, this)" ondragleave="onDragLeave(this)">
+            <input type="file" id="bgm-file-input" accept=".mp3,.wav,.m4a,.aac,.ogg,.flac" onclick="this.value=null" onchange="handleBgmFile(this.files[0])" />
+            
+            <!-- State A: Empty Prompt -->
+            <div class="drop-content-layout" id="bgm-prompt">
+              <div class="drop-icon-compact">🎵</div>
+              <div class="drop-text-col">
+                <div class="drop-title-compact">Add Background Music (MP3, WAV)</div>
+                <div class="drop-hint-compact">Loops softly in background · Auto-ducked under voiceover</div>
+              </div>
+              <div class="drop-badge-action">📁 Select Music</div>
+            </div>
+
+            <!-- State B: Loaded File -->
+            <div class="drop-content-layout" id="bgm-loaded-inner" style="display:none;">
+              <div class="drop-icon-compact" style="background:rgba(16,185,129,0.15);color:#34d399;">🎶</div>
+              <div class="drop-text-col">
+                <div class="drop-title-compact" id="bgm-filename" style="color:#34d399;font-weight:700;">—</div>
+                <div class="drop-hint-compact" id="bgm-duration" style="color:var(--text-secondary);">—</div>
+              </div>
+              <button type="button" class="drop-badge-action" onclick="event.stopPropagation(); removeBgm();" style="pointer-events:auto;z-index:3;cursor:pointer;color:var(--accent-red);border-color:rgba(239,68,68,0.4);background:rgba(239,68,68,0.12);">✕ Remove</button>
+            </div>
+          </div>
+
+          <div class="slider-group" style="margin-top:6px;">
+            <div class="slider-label-row">
+              <label class="slider-label" for="bgm-vol-slider" style="margin:0;font-size:0.78rem;">🔊 BGM Volume</label>
+              <span class="slider-value-badge" id="bgm-vol-val" style="font-size:0.72rem;">7% (Subtle Ambience)</span>
+            </div>
+            <input type="range" id="bgm-vol-slider" min="1" max="30" value="7" class="slider"
+                   oninput="updateSlider(this, 'bgm-vol-val', v => `${v}% ${v <= 10 ? '(Subtle Ambience)' : v <= 20 ? '(Noticeable)' : '(Prominent)'}`)"
+                   aria-label="Background music volume percentage" />
+          </div>
+        </div>
+
+        <!-- Channel Niche & Topic (Moved to Step 1 bottom) -->
+        <div class="slider-group" style="margin-top:var(--sp-sm);background:rgba(255,255,255,0.025);padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.07);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <label class="slider-label" for="niche-select" style="color:var(--text-primary);font-size:0.84rem;margin:0;">
+              🎭 Channel Niche &amp; Topic
+            </label>
+            <span style="font-size:0.7rem;color:var(--text-muted);">For Whisper AI vocabulary &amp; viral themes</span>
+          </div>
+          <select id="niche-select" class="text-input" aria-label="Content niche" style="padding:7px 12px;font-size:0.82rem;" onchange="syncStageFromState()">
             <option value="Stoicism &amp; Philosophy">🏛️ Stoicism &amp; Ancient Philosophy</option>
             <option value="Dark Psychology">🧠 Dark Psychology &amp; Mind Science</option>
             <option value="Motivation">🔥 Motivation, Grit &amp; Self-Mastery</option>
+            <option value="Narrative Storytelling">📖 Narrative Storytelling &amp; Reddit Mysteries</option>
             <option value="True Crime">🔍 True Crime &amp; Historical Investigations</option>
             <option value="Business">💼 Business Case Studies &amp; Moguls</option>
+            <option value="Sci-Fi">🚀 Sci-Fi &amp; Cosmic Philosophy</option>
+            <option value="Horror">👻 Horror &amp; Paranormal Stories</option>
+            <option value="Wealth">💎 Wealth &amp; Financial Psychology</option>
           </select>
+        </div>
+
+        <!-- Wizard Nav Bar for Step 1 -->
+        <div class="wizard-nav-bar">
+          <div></div>
+          <div class="wizard-step-counter">Step 1 of 5 · Voice &amp; Music</div>
+          <button type="button" class="btn-wizard-next" onclick="nextWizardStep()">
+            Next: 🖼️ Author Avatar →
+          </button>
         </div>
 
       </div>
     </div>
 
     <!-- ── STEP 2: Avatar / Author Portrait ──────────────────────────────── -->
-    <div class="step-card animate-fade-in" style="animation-delay:0.05s;">
+    <div class="step-card wizard-step" id="wizard-step-2">
       <div class="step-header">
         <div class="step-number">2</div>
         <div>
@@ -137,20 +254,29 @@
           </div>
 
           <div class="avatar-controls">
-            <!-- Upload -->
-            <div class="drop-zone" id="avatar-dropzone" style="padding:var(--sp-lg);"
+            <!-- Compact Avatar Upload Drop Zone -->
+            <div class="drop-zone" id="avatar-dropzone"
                  ondrop="handleAvatarDrop(event)" ondragover="onDragOver(event, this)" ondragleave="onDragLeave(this)">
-              <input type="file" id="avatar-file-input" accept=".png,.jpg,.jpeg,.webp" onchange="handleAvatarFile(this.files[0])" />
-              <span class="drop-icon" style="font-size:1.8rem;">📸</span>
-              <div class="drop-title" style="font-size:0.85rem;">Upload Portrait Image</div>
-              <div class="drop-hint">PNG with transparent background gives best results</div>
-            </div>
+              <input type="file" id="avatar-file-input" accept=".png,.jpg,.jpeg,.webp" onclick="this.value=null" onchange="handleAvatarFile(this.files[0])" />
+              
+              <!-- State A: Empty Prompt -->
+              <div class="drop-content-layout" id="avatar-prompt">
+                <div class="drop-icon-compact">📸</div>
+                <div class="drop-text-col">
+                  <div class="drop-title-compact">Upload Author Portrait</div>
+                  <div class="drop-hint-compact">PNG cutout with transparent background gives best pop</div>
+                </div>
+                <div class="drop-badge-action">📁 Select Image</div>
+              </div>
 
-            <div id="avatar-loaded" class="file-loaded" style="display:none;margin-top:var(--sp-sm);">
-              <span class="file-loaded-icon">✅</span>
-              <div>
-                <div class="file-loaded-name" id="avatar-filename">—</div>
-                <div class="file-loaded-meta" id="avatar-info">—</div>
+              <!-- State B: Loaded File -->
+              <div class="drop-content-layout" id="avatar-loaded-inner" style="display:none;">
+                <div class="drop-icon-compact" style="background:rgba(16,185,129,0.15);color:#34d399;">✅</div>
+                <div class="drop-text-col">
+                  <div class="drop-title-compact" id="avatar-filename" style="color:#34d399;font-weight:700;">—</div>
+                  <div class="drop-hint-compact" id="avatar-info" style="color:var(--text-secondary);">—</div>
+                </div>
+                <div class="drop-badge-action">🔄 Change</div>
               </div>
             </div>
           </div>
@@ -159,11 +285,11 @@
         <div class="two-col">
           <!-- Placement -->
           <div class="slider-group">
-            <label class="slider-label">📍 Avatar Placement</label>
+            <label class="slider-label">📍 Avatar Placement (Bottom Edge)</label>
             <div class="btn-group" id="position-group" role="radiogroup" aria-label="Avatar placement">
-              <button class="btn-option" id="pos-left"   onclick="setPosition('left')"   aria-pressed="false">⬅️ Left (40%)</button>
-              <button class="btn-option" id="pos-center" onclick="setPosition('center')" aria-pressed="false">⏺️ Center</button>
-              <button class="btn-option active" id="pos-right"  onclick="setPosition('right')"  aria-pressed="true">➡️ Right (40%)</button>
+              <button class="btn-option" id="pos-left"   onclick="setPosition('left')"   aria-pressed="false">⬅️ Bottom Left (25%)</button>
+              <button class="btn-option" id="pos-center" onclick="setPosition('center')" aria-pressed="false">⏺️ Bottom Center</button>
+              <button class="btn-option active" id="pos-right"  onclick="setPosition('right')"  aria-pressed="true">➡️ Bottom Right (25%)</button>
             </div>
           </div>
 
@@ -179,22 +305,75 @@
           </div>
         </div>
 
-        <!-- Stroke Width -->
-        <div class="slider-group">
-          <div class="slider-label-row">
-            <label class="slider-label" for="stroke-width-slider">🖊️ Stroke Width</label>
-            <span class="slider-value-badge" id="stroke-width-display">10px</span>
+        <div class="two-col" style="align-items:center;">
+          <!-- Avatar Size / Scale Slider -->
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <label class="slider-label" for="avatar-size-slider">📏 Avatar Size / Height</label>
+              <span class="slider-value-badge" id="avatar-size-display">920px (Large)</span>
+            </div>
+            <input type="range" id="avatar-size-slider" min="500" max="1050" step="25" value="920"
+                   oninput="updateAvatarSize(this)"
+                   aria-label="Avatar height in pixels" />
+            <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);">
+              <span>500px Small</span><span>750px Medium</span><span style="color:var(--accent-secondary);font-weight:600;">920px Full</span><span>1050px Max</span>
+            </div>
           </div>
-          <input type="range" id="stroke-width-slider" min="4" max="24" step="2" value="10"
-                 oninput="updateSlider(this, 'stroke-width-display', v => v+'px')"
-                 aria-label="Stroke border width in pixels" />
+
+          <!-- Flip / Mirror Toggle -->
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <label class="slider-label">🔄 Mirror / Flip Avatar</label>
+            </div>
+            <button type="button" class="btn-option" id="btn-avatar-flip" onclick="toggleAvatarFlip()" style="width:100%;height:38px;">
+              🔄 Mirror OFF (Normal)
+            </button>
+          </div>
+        </div>
+
+        <div class="two-col" style="margin-top:var(--sp-sm);">
+          <!-- Stroke Width -->
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <label class="slider-label" for="stroke-width-slider">🖊️ Stroke Border Width</label>
+              <span class="slider-value-badge" id="stroke-width-display">10px</span>
+            </div>
+            <input type="range" id="stroke-width-slider" min="0" max="24" step="2" value="10"
+                   oninput="updateSlider(this, 'stroke-width-display', v => v === '0' ? 'Off' : v+'px')"
+                   aria-label="Stroke border width in pixels" />
+          </div>
+
+          <!-- Avatar Transparency / Opacity -->
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <label class="slider-label" for="avatar-opacity-slider">👻 Avatar Opacity / Transparency</label>
+              <span class="slider-value-badge" id="avatar-opacity-display">100% (Solid / OFF)</span>
+            </div>
+            <input type="range" id="avatar-opacity-slider" min="15" max="100" step="5" value="100"
+                   oninput="updateAvatarOpacity(this)"
+                   aria-label="Avatar opacity percentage" />
+            <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);">
+              <span>15% Ghost</span><span>50% Blend</span><span style="color:var(--accent-secondary);font-weight:600;">100% Solid (Default OFF)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Wizard Nav Bar for Step 2 -->
+        <div class="wizard-nav-bar">
+          <button type="button" class="btn-wizard-prev" onclick="prevWizardStep()">
+            ← Back: 🎙️ Voiceover
+          </button>
+          <div class="wizard-step-counter">Step 2 of 5 · Author Avatar</div>
+          <button type="button" class="btn-wizard-next" onclick="nextWizardStep()">
+            Next: 📂 B-Roll Footage →
+          </button>
         </div>
 
       </div>
     </div>
 
     <!-- ── STEP 3: Local B-Roll Pool & Cinematic Settings ────────────────── -->
-    <div class="step-card animate-fade-in" style="animation-delay:0.1s;">
+    <div class="step-card wizard-step" id="wizard-step-3">
       <div class="step-header">
         <div class="step-number">3</div>
         <div>
@@ -212,6 +391,9 @@
                    placeholder="D:/Stock_Clips/Dark_Aesthetic_1080p"
                    oninput="resetFolderStats()"
                    aria-label="B-Roll folder path" />
+            <button class="btn btn-secondary" onclick="browseFolder()" id="btn-browse" title="Browse for folder via native dialog">
+              📂 Browse
+            </button>
             <button class="btn btn-secondary" onclick="scanFolder()" id="btn-scan" title="Scan folder for clips">
               🔍 Scan
             </button>
@@ -257,174 +439,736 @@
           <div class="slider-group">
             <div class="slider-label-row">
               <label class="slider-label" for="blur-slider">🌫️ Background Blur</label>
-              <span class="slider-value-badge" id="blur-display">12px</span>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <button type="button" class="btn-option" id="btn-blur-toggle" onclick="toggleBlur()" style="padding:2px 8px;font-size:0.72rem;height:24px;">
+                  🚫 Blur OFF
+                </button>
+                <span class="slider-value-badge" id="blur-display">0px (OFF)</span>
+              </div>
             </div>
-            <input type="range" id="blur-slider" min="0" max="30" step="2" value="12"
-                   oninput="updateSlider(this, 'blur-display', v => v+'px')"
+            <input type="range" id="blur-slider" min="0" max="30" step="2" value="0"
+                   oninput="updateBlurSlider(this)"
                    aria-label="Background blur radius in pixels" />
             <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);">
-              <span>0px Off</span><span>15px Medium</span><span>30px Heavy</span>
+              <span style="color:var(--accent-secondary);font-weight:600;">0px Off (Crisp)</span><span>15px Medium</span><span>30px Heavy</span>
             </div>
           </div>
         </div>
 
-        <!-- Dark Tint -->
-        <div class="slider-group">
-          <div class="slider-label-row">
-            <label class="slider-label" for="tint-slider">🌑 Background Dark Tint</label>
-            <span class="slider-value-badge" id="tint-display">25%</span>
+        <div class="two-col" style="margin-top:var(--sp-md);">
+          <!-- Dark Tint -->
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <label class="slider-label" for="tint-slider">🌑 Background Dark Tint</label>
+              <span class="slider-value-badge" id="tint-display">25%</span>
+            </div>
+            <input type="range" id="tint-slider" min="0" max="80" step="5" value="25"
+                   oninput="updateSlider(this, 'tint-display', v => v+'%')"
+                   aria-label="Background dark tint percentage" />
+            <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);">
+              <span>0% None</span>
+              <span style="color:var(--accent-secondary);font-size:0.7rem;">Avatar &amp; Captions stay 100% crisp</span>
+              <span>80% Dark</span>
+            </div>
           </div>
-          <input type="range" id="tint-slider" min="0" max="80" step="5" value="25"
-                 oninput="updateSlider(this, 'tint-display', v => v+'%')"
-                 aria-label="Background dark tint percentage" />
-          <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);">
-            <span>0% None</span>
-            <span style="color:var(--accent-secondary);font-size:0.7rem;">Avatar &amp; Captions stay 100% crisp</span>
-            <span>80% Dark</span>
+
+          <!-- Stock Video Audio Mute -->
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <label class="slider-label">🔊 Stock Footage Sound</label>
+            </div>
+            <div class="btn-group" id="broll-audio-group" role="radiogroup" aria-label="Stock footage audio">
+              <button type="button" class="btn-option active" id="audio-muted" onclick="setBrollAudio('muted')" aria-pressed="true">
+                🔇 100% Muted (Studio Quality)
+              </button>
+              <button type="button" class="btn-option" id="audio-ambient" onclick="setBrollAudio('ambient')" aria-pressed="false">
+                🔈 Low Ambient (3%)
+              </button>
+            </div>
           </div>
+        </div>
+
+        <!-- B-Roll Footage Pacing & YouTube Fair Use Slicing -->
+        <div class="pacing-mode-container" id="pacing-mode-container">
+          <div class="pacing-header-row">
+            <div style="font-weight:700;font-size:0.86rem;color:var(--text-primary);display:flex;align-items:center;gap:6px;">
+              <span>⚡</span> B-Roll Pacing Mode &amp; Fair Use Trimming
+            </div>
+            <span class="pacing-fairuse-pill" id="pacing-badge">🛡️ YouTube Fair Use Safe</span>
+          </div>
+
+          <div class="pacing-toggle-group" role="radiogroup" aria-label="B-Roll Pacing Mode">
+            <button type="button" class="pacing-toggle-btn active" id="btn-pacing-full" onclick="setBrollPacing('full')">
+              <span>🎞️</span> Stock Clips (As-Is / Full)
+            </button>
+            <button type="button" class="pacing-toggle-btn" id="btn-pacing-fast" onclick="setBrollPacing('fast_cuts')">
+              <span>⚡</span> Dynamic Fast Cuts (5s–9s Random Slices)
+            </button>
+          </div>
+
+          <!-- Fast Cuts Controls (Shown when fast_cuts active) -->
+          <div class="pacing-sliders-panel" id="pacing-sliders-panel" style="display:none;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div class="slider-group" style="margin:0;">
+                <div class="slider-label-row">
+                  <label class="slider-label" for="pacing-min-slider" style="font-size:0.76rem;">⏱️ Min Slice Duration</label>
+                  <span class="slider-value-badge" id="pacing-min-val" style="font-size:0.72rem;">5.0s</span>
+                </div>
+                <input type="range" id="pacing-min-slider" min="3" max="15" step="1" value="5" class="slider"
+                       oninput="onPacingMinChange(this.value)" aria-label="Minimum clip duration in seconds" />
+              </div>
+              <div class="slider-group" style="margin:0;">
+                <div class="slider-label-row">
+                  <label class="slider-label" for="pacing-max-slider" style="font-size:0.76rem;">⏱️ Max Slice Duration</label>
+                  <span class="slider-value-badge" id="pacing-max-val" style="font-size:0.72rem;">9.0s</span>
+                </div>
+                <input type="range" id="pacing-max-slider" min="5" max="25" step="1" value="9" class="slider"
+                       oninput="onPacingMaxChange(this.value)" aria-label="Maximum clip duration in seconds" />
+              </div>
+            </div>
+            <div style="font-size:0.72rem;color:#94a3b8;line-height:1.4;margin-top:2px;">
+              💡 <strong>Fair Use Algorithm:</strong> Clips longer than the chosen duration are automatically sliced with random start offsets (e.g. a 30s or 2m stock video runs for only 5s–9s). This dramatically improves retention and prevents YouTube <em>"Reused Content"</em> policy warnings.
+            </div>
+          </div>
+        </div>
+
+        <!-- Wizard Nav Bar for Step 3 -->
+        <div class="wizard-nav-bar">
+          <button type="button" class="btn-wizard-prev" onclick="prevWizardStep()">
+            ← Back: 🖼️ Author Avatar
+          </button>
+          <div class="wizard-step-counter">Step 3 of 5 · B-Roll Atmosphere</div>
+          <button type="button" class="btn-wizard-next" onclick="nextWizardStep()">
+            Next: 💬 Subtitles &amp; Player →
+          </button>
         </div>
 
       </div>
     </div>
 
-    <!-- ── STEP 4: Adaptive Caption Styles ───────────────────────────────── -->
-    <div class="step-card animate-fade-in" style="animation-delay:0.15s;">
+    <!-- ── STEP 4: Subtitles & Audio Visualizer ────────────────────────────── -->
+    <div class="step-card wizard-step" id="wizard-step-4">
       <div class="step-header">
         <div class="step-number">4</div>
         <div>
-          <div class="step-title">💬 Adaptive Caption Styles</div>
-          <div class="step-subtitle">Auto-positioned opposite to avatar · CapCut kinetic highlight</div>
+          <div class="step-title">💬 Subtitles &amp; 🎵 Dynamic Audio Visualizer</div>
+          <div class="step-subtitle">12 viral subtitle styles · Motion graphics player overlay with instant ON/OFF switch</div>
         </div>
       </div>
       <div class="step-body">
 
-        <div id="caption-position-indicator" style="padding:var(--sp-md);background:var(--glass-strong);border-radius:var(--radius-md);border:1px solid var(--border-accent);">
-          <div style="font-size:0.8rem;color:var(--text-accent);font-weight:600;">⚡ Smart Auto-Positioning Active</div>
-          <div id="caption-pos-desc" style="font-size:0.75rem;color:var(--text-secondary);margin-top:4px;">
-            Avatar Right → Captions placed in LEFT half (MarginR=960)
+        <!-- Caption Placement & Font Size Selectors -->
+        <div class="two-col" style="margin-bottom:var(--sp-md);">
+          <div class="slider-group">
+            <label class="slider-label">📍 Caption Placement on Canvas</label>
+            <div class="btn-group" id="caption-pos-group" role="radiogroup" aria-label="Caption placement">
+              <button type="button" class="btn-option active" id="cap-pos-center" onclick="setCaptionPosition('center')" aria-pressed="true">
+                🎯 Center Screen (Middle &amp; Center)
+              </button>
+              <button type="button" class="btn-option" id="cap-pos-bottom" onclick="setCaptionPosition('bottom')" aria-pressed="false">
+                ⬇️ Bottom Area
+              </button>
+            </div>
+          </div>
+
+          <div class="slider-group">
+            <label class="slider-label">🔤 Caption Text Size</label>
+            <div class="btn-group" id="caption-size-group" role="radiogroup" aria-label="Caption text size">
+              <button type="button" class="btn-option" id="cap-size-medium" onclick="setCaptionSize('medium')" aria-pressed="false">
+                Medium (52px)
+              </button>
+              <button type="button" class="btn-option active" id="cap-size-large" onclick="setCaptionSize('large')" aria-pressed="true">
+                Large (68px)
+              </button>
+              <button type="button" class="btn-option" id="cap-size-huge" onclick="setCaptionSize('huge')" aria-pressed="false">
+                Huge (82px)
+              </button>
+            </div>
           </div>
         </div>
 
-        <label class="slider-label" style="margin-bottom:var(--sp-sm);">🎨 Caption Style Preset</label>
-        <div class="preset-grid" id="preset-grid" role="radiogroup" aria-label="Caption preset">
-          <div class="preset-card active" data-preset="capcut_yellow" onclick="selectPreset(this)" tabindex="0" aria-pressed="true">
-            <span class="preset-emoji">🔥</span>
-            <div class="preset-name">CapCut Viral Yellow</div>
+        <div class="preset-section-header">
+          <label class="preset-section-title">PRESET STYLE TEMPLATES</label>
+          <span style="font-size:0.72rem;color:var(--text-muted);">18 CapCut Viral &amp; Documentary Styles</span>
+        </div>
+
+        <div class="preset-grid-18" id="preset-grid" role="radiogroup" aria-label="Caption preset">
+          <!-- 1. CapCut Viral Yellow -->
+          <div class="preset-card-visual active" data-preset="capcut_yellow" onclick="selectPreset(this)" tabindex="0" aria-pressed="true" title="CapCut Viral Yellow">
+            <div class="preset-aa-preview"><span class="aa-capcut">Aa!</span></div>
+            <div class="preset-name">CapCut Viral</div>
           </div>
-          <div class="preset-card" data-preset="hormozi_green" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
-            <span class="preset-emoji">💪</span>
-            <div class="preset-name">Hormozi Green</div>
+          <!-- 2. Hormozi Green -->
+          <div class="preset-card-visual" data-preset="hormozi_green" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Hormozi Punch Green">
+            <div class="preset-aa-preview"><span class="aa-hormozi">Aa!</span></div>
+            <div class="preset-name">Hormozi</div>
           </div>
-          <div class="preset-card" data-preset="neon_cyber" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
-            <span class="preset-emoji">🌐</span>
-            <div class="preset-name">Neon Cyber</div>
+          <!-- 3. MrBeast Gold -->
+          <div class="preset-card-visual" data-preset="mrbeast_punch" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="MrBeast Punchy Gold">
+            <div class="preset-aa-preview"><span class="aa-mrbeast">AA!</span></div>
+            <div class="preset-name">MrBeast</div>
           </div>
-          <div class="preset-card" data-preset="dark_stoic" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
-            <span class="preset-emoji">🏛️</span>
-            <div class="preset-name">Stoic Slate</div>
-          </div>
-          <div class="preset-card" data-preset="ali_abdaal" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
-            <span class="preset-emoji">📚</span>
+          <!-- 4. Ali Abdaal -->
+          <div class="preset-card-visual" data-preset="ali_abdaal" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Ali Abdaal Aesthetic">
+            <div class="preset-aa-preview"><span class="aa-ali">Aa!</span></div>
             <div class="preset-name">Ali Abdaal</div>
           </div>
-          <div class="preset-card" data-preset="iman_gadzhi" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
-            <span class="preset-emoji">👑</span>
-            <div class="preset-name">Luxury Gold</div>
+          <!-- 5. Luxury Gold -->
+          <div class="preset-card-visual" data-preset="iman_gadzhi" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Iman Gadzhi Luxury Gold">
+            <div class="preset-aa-preview"><span class="aa-luxury">AA!</span></div>
+            <div class="preset-name">Luxury</div>
           </div>
-          <div class="preset-card" data-preset="tiktok_violet" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
-            <span class="preset-emoji">📱</span>
-            <div class="preset-name">TikTok Violet</div>
+          <!-- 6. TikTok Glow -->
+          <div class="preset-card-visual" data-preset="tiktok_violet" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="TikTok Viral Violet">
+            <div class="preset-aa-preview"><span class="aa-tiktok">Aa</span></div>
+            <div class="preset-name">TikTok Glow</div>
           </div>
-          <div class="preset-card" data-preset="red_fire" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
-            <span class="preset-emoji">🔴</span>
+          <!-- 7. Podcast Box -->
+          <div class="preset-card-visual" data-preset="podcast_pill" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Vox / Podcast Box">
+            <div class="preset-aa-preview"><span class="aa-podcast-pill"><span class="aa-podcast-text">Aa!</span></span></div>
+            <div class="preset-name">Podcast Box</div>
+          </div>
+          <!-- 8. Streamer -->
+          <div class="preset-card-visual" data-preset="streamer_lime" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Streamer High-Voltage Lime">
+            <div class="preset-aa-preview"><span class="aa-streamer">AA!</span></div>
+            <div class="preset-name">Streamer</div>
+          </div>
+          <!-- 9. Neon Cyber -->
+          <div class="preset-card-visual" data-preset="neon_cyber" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Neon Cyber Glow">
+            <div class="preset-aa-preview"><span class="aa-neon">Aa</span></div>
+            <div class="preset-name">Neon Cyber</div>
+          </div>
+          <!-- 10. Red Fire -->
+          <div class="preset-card-visual" data-preset="red_fire" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Red Fire Accent">
+            <div class="preset-aa-preview"><span class="aa-fire">Aa!</span></div>
             <div class="preset-name">Red Fire</div>
           </div>
-          <div class="preset-card" data-preset="podcast_pill" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
-            <span class="preset-emoji">🎙️</span>
-            <div class="preset-name">Podcast Pill</div>
+          <!-- 11. Stoic Slate -->
+          <div class="preset-card-visual" data-preset="dark_stoic" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Stoic Slate Wisdom">
+            <div class="preset-aa-preview"><span class="aa-stoic">Aa!</span></div>
+            <div class="preset-name">Stoic Slate</div>
           </div>
-          <div class="preset-card" data-preset="clean_minimal" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
-            <span class="preset-emoji">🧊</span>
+          <!-- 12. Clean Minimal -->
+          <div class="preset-card-visual" data-preset="clean_minimal" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Clean Minimalist">
+            <div class="preset-aa-preview"><span class="aa-minimal">Aa</span></div>
             <div class="preset-name">Clean Minimal</div>
           </div>
-          <div class="preset-card" data-preset="mrbeast_punch" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
-            <span class="preset-emoji">⚡</span>
-            <div class="preset-name">MrBeast Gold</div>
+          <!-- 13. Retro 70s -->
+          <div class="preset-card-visual" data-preset="retro_vintage" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Retro Vintage 70s Amber">
+            <div class="preset-aa-preview"><span class="aa-retro">Aa!</span></div>
+            <div class="preset-name">Retro 70s</div>
           </div>
-          <div class="preset-card" data-preset="streamer_lime" onclick="selectPreset(this)" tabindex="0" aria-pressed="false">
-            <span class="preset-emoji">🎮</span>
-            <div class="preset-name">Streamer Lime</div>
+          <!-- 14. Midnight Neon -->
+          <div class="preset-card-visual" data-preset="midnight_blue" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Midnight Blue Neon">
+            <div class="preset-aa-preview"><span class="aa-midnight">Aa!</span></div>
+            <div class="preset-name">Midnight Blue</div>
           </div>
+          <!-- 15. True Crime -->
+          <div class="preset-card-visual" data-preset="true_crime" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="True Crime Blood Red">
+            <div class="preset-aa-preview"><span class="aa-crime">Aa!</span></div>
+            <div class="preset-name">True Crime</div>
+          </div>
+          <!-- 16. Wealth Mint -->
+          <div class="preset-card-visual" data-preset="wealth_cash" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Wealth & Cash Mint">
+            <div class="preset-aa-preview"><span class="aa-wealth">Aa!</span></div>
+            <div class="preset-name">Wealth Mint</div>
+          </div>
+          <!-- 17. Cosmic Violet -->
+          <div class="preset-card-visual" data-preset="cosmic_violet" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Cosmic Deep Violet">
+            <div class="preset-aa-preview"><span class="aa-cosmic">Aa!</span></div>
+            <div class="preset-name">Cosmic Violet</div>
+          </div>
+          <!-- 18. Cinema Bronze -->
+          <div class="preset-card-visual" data-preset="cinematic_bronze" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Cinematic Bronze Gold">
+            <div class="preset-aa-preview"><span class="aa-bronze">AA!</span></div>
+            <div class="preset-name">Cinema Bronze</div>
+          </div>
+        </div>
+
+        <!-- ── Audio Player & Visualizer Overlay ────────────────────────── -->
+        <div class="vis-toggle-header-card" style="margin-top:var(--sp-xl);">
+          <div>
+            <div style="font-size:1.05rem;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+              <span>🎵</span> Audio Player &amp; Dynamic Visualizer Overlay
+            </div>
+            <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px;">
+              Dynamic soundwave animation · Animated progress bar · 10 YouTube Studio styles
+            </div>
+          </div>
+          <label class="vis-switch-control" for="vis-toggle-checkbox" title="Toggle audio visualizer on or off">
+            <input type="checkbox" id="vis-toggle-checkbox" class="vis-switch-input" checked onchange="onVisToggleCheckbox(this.checked)" />
+            <span class="vis-switch-track"><span class="vis-switch-thumb"></span></span>
+            <span class="vis-switch-status-text" id="vis-toggle-label">✨ Visualizer ON</span>
+          </label>
+        </div>
+
+        <div class="vis-disabled-banner" id="vis-disabled-banner">
+          🚫 <strong>Audio Visualizer is OFF</strong> — Final video will render cleanly without player motion graphics (faster encoding).
+        </div>
+
+        <div id="vis-controls-body">
+
+        <!-- Mode Selector: Built-in Templates vs Custom Green-Screen Video -->
+        <div class="slider-group" style="margin-bottom:var(--sp-md);">
+          <label class="slider-label">🎛️ Visualizer Mode</label>
+          <div class="btn-group" role="tablist" aria-label="Visualizer Mode">
+            <button type="button" class="btn-option active" id="btn-vis-mode-template" onclick="setVisMode('template')" aria-pressed="true" style="flex:1;">
+              🎨 Built-in Templates (10 Styles)
+            </button>
+            <button type="button" class="btn-option" id="btn-vis-mode-video" onclick="setVisMode('video')" aria-pressed="false" style="flex:1;">
+              🟢 Custom Green-Screen Video (Chroma Key)
+            </button>
+          </div>
+        </div>
+
+        <!-- Placement Selector (shared across modes) -->
+        <div class="slider-group" style="margin-bottom:var(--sp-md);">
+          <label class="slider-label">📍 Overlay Placement on 16:9 Canvas</label>
+          <div class="btn-group" id="vis-pos-group" role="radiogroup" aria-label="Visualizer placement">
+            <button type="button" class="btn-option active" id="vis-pos-top_center" onclick="setVisualizerPosition('top_center')" aria-pressed="true">
+              ⬆️ Top-Center (Recommended)
+            </button>
+            <button type="button" class="btn-option" id="vis-pos-top_left" onclick="setVisualizerPosition('top_left')" aria-pressed="false">
+              ↖️ Top-Left
+            </button>
+            <button type="button" class="btn-option" id="vis-pos-top_right" onclick="setVisualizerPosition('top_right')" aria-pressed="false">
+              ↗️ Top-Right
+            </button>
+            <button type="button" class="btn-option" id="vis-pos-bottom_center" onclick="setVisualizerPosition('bottom_center')" aria-pressed="false">
+              ⬇️ Bottom-Center
+            </button>
+            <button type="button" class="btn-option" id="vis-pos-none" onclick="setVisualizerPosition('none')" aria-pressed="false">
+              🚫 None (Off)
+            </button>
+          </div>
+        </div>
+
+        <!-- ═══ MODE A: BUILT-IN TEMPLATES SECTION ═══ -->
+        <div id="vis-template-section">
+          <!-- Custom Title & Subtitle (for podcast/documentary & minimal cards) -->
+          <div class="two-col" style="margin-bottom:var(--sp-md);">
+            <div class="slider-group">
+              <label class="slider-label" for="vis-title-input">🏷️ Player Display Title</label>
+              <input type="text" id="vis-title-input" class="text-input"
+                     placeholder="Stoic Wisdom" value="Stoic Wisdom"
+                     oninput="updateVisPreview()"
+                     aria-label="Player display title" />
+            </div>
+            <div class="slider-group">
+              <label class="slider-label" for="vis-subtitle-input">📝 Subtitle / Episode</label>
+              <input type="text" id="vis-subtitle-input" class="text-input"
+                     placeholder="Audio Story Series" value="Audio Story Series"
+                     oninput="updateVisPreview()"
+                     aria-label="Player subtitle" />
+            </div>
+          </div>
+
+          <!-- Live Visualizer Widget Mockup Preview -->
+          <div id="vis-live-preview-box" class="vis-preview-container" style="margin-bottom:var(--sp-lg);">
+            <div class="vis-preview-badge" id="vis-preview-badge">📍 Top-Center · 🌊 Glassmorphism Cyan</div>
+            <div id="vis-card-mockup" class="vis-mockup-card style-glass_pill_cyan">
+              <div class="vis-mockup-left" id="vis-mockup-left">
+                <div class="vis-mockup-playbtn">▶</div>
+              </div>
+              <div class="vis-mockup-center">
+                <div class="vis-mockup-meta" id="vis-mockup-meta">
+                  <span class="vis-mockup-title" id="vis-preview-title">Stoic Wisdom</span>
+                  <span class="vis-mockup-sub" id="vis-preview-sub">Audio Story Series</span>
+                </div>
+                <div class="vis-mockup-waves" id="vis-mockup-waves">
+                  <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+                  <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+                  <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+                  <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+                  <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+                  <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+                  <div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div><div class="vis-bar"></div>
+                </div>
+                <div class="vis-mockup-prog-wrap">
+                  <div class="vis-mockup-prog-fill" id="vis-mockup-fill"></div>
+                </div>
+                <div class="vis-mockup-timecodes">
+                  <span id="vis-mockup-time-cur">01:42</span>
+                  <span id="vis-mockup-time-tot">08:35</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 10 Selectable Style Templates Grid -->
+          <label class="slider-label" style="margin-bottom:var(--sp-sm);">🎨 Select Player Design Template (10 Styles)</label>
+          <div class="vis-preset-grid" id="vis-preset-grid" role="radiogroup" aria-label="Audio player templates">
+            <!-- 1. Glassmorphism Cyan -->
+            <div class="vis-preset-card active" data-style="glass_pill_cyan" onclick="selectVisPreset(this)" tabindex="0" aria-pressed="true">
+              <span class="preset-emoji">🌊</span>
+              <div class="preset-name">1. Glass Cyan Pill</div>
+              <div class="vis-card-tag" style="color:#00d2ff;">Cyan Wave · Frosted Pill</div>
+            </div>
+            <!-- 2. Cosmic Orbit Pod -->
+            <div class="vis-preset-card" data-style="cosmic_orbit" onclick="selectVisPreset(this)" tabindex="0" aria-pressed="false">
+              <span class="preset-emoji">🪐</span>
+              <div class="preset-name">2. Cosmic Orbit Pod</div>
+              <div class="vis-card-tag" style="color:#38bdf8;">Planetary Halo · White Wave</div>
+            </div>
+            <!-- 3. Sunset Waveform -->
+            <div class="vis-preset-card" data-style="sunset_vibes" onclick="selectVisPreset(this)" tabindex="0" aria-pressed="false">
+              <span class="preset-emoji">🌅</span>
+              <div class="preset-name">3. Sunset Waveform</div>
+              <div class="vis-card-tag" style="color:#ff6622;">Pink/Orange · Glow Wave</div>
+            </div>
+            <!-- 4. Documentary Podcast Card -->
+            <div class="vis-preset-card" data-style="podcast_doc" onclick="selectVisPreset(this)" tabindex="0" aria-pressed="false">
+              <span class="preset-emoji">🎙️</span>
+              <div class="preset-name">4. Documentary Card</div>
+              <div class="vis-card-tag" style="color:#00e5ff;">Story Art · Live EQ Bars</div>
+            </div>
+            <!-- 5. Avatar Halo Pod -->
+            <div class="vis-preset-card" data-style="cyber_avatar" onclick="selectVisPreset(this)" tabindex="0" aria-pressed="false">
+              <span class="preset-emoji">🧑‍🚀</span>
+              <div class="preset-name">5. Avatar Halo Pod</div>
+              <div class="vis-card-tag" style="color:#7dd3fc;">Avatar Pod · Pure White</div>
+            </div>
+            <!-- 6. Neon Cyber Pill -->
+            <div class="vis-preset-card" data-style="neon_cyber" onclick="selectVisPreset(this)" tabindex="0" aria-pressed="false">
+              <span class="preset-emoji">⚡</span>
+              <div class="preset-name">6. Neon Cyber Pill</div>
+              <div class="vis-card-tag" style="color:#d8b4fe;">Magenta-Cyan · Violet Pulse</div>
+            </div>
+            <!-- 7. Modern Minimal Light -->
+            <div class="vis-preset-card" data-style="apple_minimal" onclick="selectVisPreset(this)" tabindex="0" aria-pressed="false">
+              <span class="preset-emoji">🍏</span>
+              <div class="preset-name">7. Minimal Light (Apple)</div>
+              <div class="vis-card-tag" style="color:#10b981;">Clean White · Emerald EQ</div>
+            </div>
+            <!-- 8. Retro Vinyl Player -->
+            <div class="vis-preset-card" data-style="retro_vinyl" onclick="selectVisPreset(this)" tabindex="0" aria-pressed="false">
+              <span class="preset-emoji">💿</span>
+              <div class="preset-name">8. Retro Vinyl Player</div>
+              <div class="vis-card-tag" style="color:#ff3355;">Grooved Vinyl · Crimson Wave</div>
+            </div>
+            <!-- 9. Particle Aura Wave -->
+            <div class="vis-preset-card" data-style="particle_aura" onclick="selectVisPreset(this)" tabindex="0" aria-pressed="false">
+              <span class="preset-emoji">✨</span>
+              <div class="preset-name">9. Particle Aura Wave</div>
+              <div class="vis-card-tag" style="color:#38bdf8;">Frameless · Center Orb</div>
+            </div>
+            <!-- 10. Studio Monochrome -->
+            <div class="vis-preset-card" data-style="studio_monochrome" onclick="selectVisPreset(this)" tabindex="0" aria-pressed="false">
+              <span class="preset-emoji">🎚️</span>
+              <div class="preset-name">10. Studio Monochrome</div>
+              <div class="vis-card-tag" style="color:#94a3b8;">Smoke White · Slate Wave</div>
+            </div>
+          </div>
+        </div><!-- /#vis-template-section -->
+
+        <!-- ═══ MODE B: CUSTOM GREEN-SCREEN VIDEO SECTION ═══ -->
+        <div id="vis-video-section" style="display:none;">
+          <!-- Dropzone -->
+          <div class="drop-zone" id="vis-video-dropzone" onclick="document.getElementById('vis-video-file-input').click()"
+               ondragover="onDragOver(event, this)" ondragleave="onDragLeave(this)" ondrop="handleVisVideoDrop(event)"
+               style="margin-bottom:var(--sp-md);border-color:rgba(34,197,94,0.4);background:rgba(34,197,94,0.03);">
+            <input type="file" id="vis-video-file-input" accept=".mp4,.webm,.mov,.m4v,.mkv" style="display:none;" onclick="this.value=null" onchange="handleVisVideoUpload(this.files[0])" />
+            <div id="vis-video-prompt" class="drop-content-layout">
+              <div class="drop-icon-compact" style="background:rgba(34,197,94,0.15);border-color:rgba(34,197,94,0.3);color:#4ade80;">🟢</div>
+              <div class="drop-text-col">
+                <div class="drop-title-compact">Upload Green-Screen Visualizer Video</div>
+                <div class="drop-hint-compact">Animated wave or motion graphics (MP4, WebM, MOV) · Chroma key removes green background</div>
+              </div>
+              <div class="drop-badge-action" style="background:rgba(34,197,94,0.18);color:#86efac;border-color:rgba(34,197,94,0.4);">📁 Select Video</div>
+            </div>
+            <div id="vis-video-loaded" class="drop-content-layout" style="display:none;">
+              <div class="drop-icon-compact" style="background:rgba(34,197,94,0.2);border-color:rgba(34,197,94,0.4);color:#4ade80;">🎬</div>
+              <div class="drop-text-col">
+                <div id="vis-video-name" class="drop-title-compact" style="color:#4ade80;font-weight:700;">visualizer.mp4</div>
+                <div id="vis-video-meta" class="drop-hint-compact" style="color:#cbd5e1;">0:05 · 1920×1080 · 2.4 MB</div>
+              </div>
+              <button type="button" class="drop-badge-action" onclick="event.stopPropagation(); removeVisVideo();" style="pointer-events:auto;z-index:3;cursor:pointer;background:rgba(239,68,68,0.2);color:#fca5a5;border-color:rgba(239,68,68,0.4);">✕ Remove</button>
+            </div>
+          </div>
+
+          <!-- Interactive Video Frame Chroma Sampler Card (Appears as soon as video is uploaded) -->
+          <div class="chroma-sampler-card" id="chroma-sampler-card" style="background:rgba(255,255,255,0.035);border:1px solid rgba(34,197,94,0.3);border-radius:14px;padding:16px;margin-bottom:var(--sp-md);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+              <div style="font-size:0.92rem;font-weight:700;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+                <span>🎯</span> Click Video Frame to Auto-Remove Background
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <button type="button" class="btn-subtle" onclick="autoDetectChromaColor()" id="btn-chroma-autodetect" title="Auto-detect green/black background color from video frame" style="padding:5px 12px;font-size:0.75rem;border-radius:8px;background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#86efac;font-weight:600;cursor:pointer;">
+                  ⚡ Auto-Detect BG
+                </button>
+                <button type="button" class="btn-subtle" onclick="pickChromaColorFromScreen()" id="btn-chroma-eyedropper" title="Sample color anywhere on screen" style="padding:5px 12px;font-size:0.75rem;border-radius:8px;border:1px solid #06b6d4;color:#38bdf8;font-weight:600;cursor:pointer;">
+                  🔍 Eyedropper
+                </button>
+              </div>
+            </div>
+
+            <!-- Video Frame Sampler Canvas with Eyedropper / Loupe Cursor -->
+            <div id="vis-sampler-viewport" style="position:relative;width:100%;border-radius:10px;overflow:hidden;background:#05070f;border:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;min-height:160px;cursor:crosshair;">
+              <!-- Transparency checkerboard background for live cut-out review -->
+              <div class="chroma-checkerboard-bg" id="vis-sampler-checker" style="position:absolute;inset:0;opacity:0.35;pointer-events:none;"></div>
+              
+              <canvas id="vis-sampler-canvas" style="display:block;max-width:100%;max-height:260px;object-fit:contain;position:relative;z-index:2;" title="Click anywhere on this video frame to remove that background color"></canvas>
+              <video id="vis-sampler-video-source" loop muted playsinline style="display:none;"></video>
+
+              <!-- Live Hover Color Tag -->
+              <div id="vis-sampler-hover-badge" style="position:absolute;bottom:8px;left:8px;z-index:4;padding:4px 8px;border-radius:6px;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.2);font-size:0.72rem;font-family:monospace;color:#ffffff;display:flex;align-items:center;gap:6px;pointer-events:none;">
+                <span id="vis-hover-swatch" style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#00FF00;border:1px solid #fff;"></span>
+                <span id="vis-hover-text">🎯 Click background pixel to remove</span>
+              </div>
+
+              <!-- View mode toggle badge: Original vs Transparent Keyed -->
+              <button type="button" onclick="toggleSamplerViewMode()" id="btn-sampler-view-toggle" style="position:absolute;top:8px;right:8px;z-index:4;padding:4px 8px;border-radius:6px;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);border:1px solid rgba(6,182,212,0.4);font-size:0.7rem;color:#38bdf8;font-weight:600;cursor:pointer;">
+                ✨ Preview: Transparent Keyed
+              </button>
+            </div>
+
+            <!-- Instant Controls Bar -->
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap;">
+              <!-- Key Color Swatches -->
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span style="font-size:0.78rem;color:var(--text-secondary);font-weight:600;">Active Key:</span>
+                <input type="color" id="chroma-color-picker" value="#00FF00" onchange="setChromaKeyColor(this.value)" style="width:36px;height:30px;border:none;border-radius:6px;cursor:pointer;background:transparent;" />
+                <span id="chroma-color-val" style="font-family:monospace;color:#4ade80;font-weight:700;font-size:0.82rem;">#00FF00</span>
+                <button type="button" class="btn-subtle active" id="btn-chroma-green" onclick="setChromaKeyColor('#00FF00')" style="padding:4px 8px;font-size:0.75rem;border-radius:6px;border:1px solid #00FF00;font-weight:600;">🟢 Green</button>
+                <button type="button" class="btn-subtle" id="btn-chroma-black" onclick="setChromaKeyColor('#000000')" style="padding:4px 8px;font-size:0.75rem;border-radius:6px;border:1px solid #555;font-weight:600;">⚫ Black</button>
+                <button type="button" class="btn-subtle" id="btn-chroma-blue" onclick="setChromaKeyColor('#0000FF')" style="padding:4px 8px;font-size:0.75rem;border-radius:6px;border:1px solid #3b82f6;font-weight:600;">🔵 Blue</button>
+              </div>
+
+              <!-- Quick Sliders in-line -->
+              <div style="display:flex;align-items:center;gap:16px;flex:1;min-width:240px;">
+                <div style="flex:1;">
+                  <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-secondary);margin-bottom:2px;">
+                    <span>Tolerance</span>
+                    <span id="chroma-sim-val" style="color:var(--text-accent);font-weight:600;">25%</span>
+                  </div>
+                  <input type="range" id="chroma-sim-slider" class="range-slider" min="5" max="60" value="25" step="1" oninput="onChromaSimChange(this.value)" style="width:100%;height:4px;" />
+                </div>
+                <div style="flex:1;">
+                  <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-secondary);margin-bottom:2px;">
+                    <span>Edge Smooth</span>
+                    <span id="chroma-blend-val" style="color:var(--text-accent);font-weight:600;">8%</span>
+                  </div>
+                  <input type="range" id="chroma-blend-slider" class="range-slider" min="0" max="30" value="8" step="1" oninput="onChromaBlendChange(this.value)" style="width:100%;height:4px;" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Live feedback footer -->
+            <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);flex-wrap:wrap;gap:6px;">
+              <span>💡 Click anywhere on the background color in the frame above to key it out instantly.</span>
+              <span style="color:#22c55e;font-weight:600;">✓ Synced to Studio Stage</span>
+            </div>
+          </div>
+        </div><!-- /#vis-video-section -->
+
+        </div><!-- /#vis-controls-body -->
+
+        <!-- Wizard Nav Bar for Step 4 -->
+        <div class="wizard-nav-bar">
+          <button type="button" class="btn-wizard-prev" onclick="prevWizardStep()">
+            ← Back: 📂 B-Roll Footage
+          </button>
+          <div class="wizard-step-counter">Step 4 of 5 · Subtitles &amp; Player</div>
+          <button type="button" class="btn-wizard-next" onclick="nextWizardStep()">
+            Next: 🎬 Studio Canvas &amp; Live Preview →
+          </button>
         </div>
 
       </div>
     </div>
 
-    <!-- ── STEP 5: Render ─────────────────────────────────────────────────── -->
-    <div class="render-section animate-fade-in" style="animation-delay:0.2s;">
-      
-      <!-- Estimates -->
-      <div class="render-estimate" id="render-estimate">
-        <div class="estimate-item">
-          <div class="estimate-value" id="est-duration">—</div>
-          <div class="estimate-label">Voiceover Duration</div>
-        </div>
-        <div class="estimate-item">
-          <div class="estimate-value" id="est-clips">—</div>
-          <div class="estimate-label">B-Roll Clips</div>
-        </div>
-        <div class="estimate-item">
-          <div class="estimate-value" id="est-encoder">—</div>
-          <div class="estimate-label">GPU Encoder</div>
-        </div>
-        <div class="estimate-item">
-          <div class="estimate-value" id="est-render-time">—</div>
-          <div class="estimate-label">Est. Render Time</div>
-        </div>
-      </div>
-
-      <!-- Output filename -->
-      <div class="slider-group" style="margin-bottom:var(--sp-lg);">
-        <label class="slider-label" for="output-filename">📄 Output Filename</label>
-        <input type="text" id="output-filename" class="text-input" style="margin-top:var(--sp-sm);"
-               placeholder="my_stoic_video.mp4"
-               aria-label="Output video filename" />
-      </div>
-
-      <!-- Render Button -->
-      <button class="btn btn-render" id="btn-render" onclick="startRender()" aria-label="Start GPU render">
-        🚀 RENDER 1-HOUR VIDEO (GPU TURBO)
-      </button>
-
-      <!-- Progress -->
-      <div class="progress-section" id="progress-section">
-        <div>
-          <div class="progress-bar-wrap">
-            <div class="progress-bar-fill" id="progress-bar" style="width:0%"></div>
+    <!-- ── STEP 5: Interactive Live Studio Canvas & Turbo Render ────────── -->
+    <div class="step-card wizard-step" id="wizard-step-5">
+      <div class="step-header" style="justify-content:space-between;flex-wrap:wrap;gap:var(--sp-sm);">
+        <div style="display:flex;align-items:center;gap:var(--sp-md);">
+          <div class="step-number" style="background:linear-gradient(135deg,#00d2ff,#a855f7);box-shadow:0 0 15px rgba(0,210,255,0.4);">5</div>
+          <div>
+            <div class="step-title">🎬 16:9 Studio Canvas, 20s Live Preview &amp; Turbo Render</div>
+            <div class="step-subtitle">WYSIWYG Director Canvas · Drag &amp; Drop · Free Resizing · 20s Demo Playback · GPU Turbo Render</div>
           </div>
-          <div class="progress-status" style="margin-top:var(--sp-sm);">
-            <span class="progress-message" id="progress-message">Starting...</span>
-            <span class="progress-pct" id="progress-pct">0%</span>
+        </div>
+        <div style="display:flex;gap:var(--sp-xs);align-items:center;">
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-toggle-grid" onclick="toggleStageGrid()" title="Toggle 90% YouTube safe action margin guides">
+            📐 Safe Grid
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-reset-stage" onclick="resetStageElements()" title="Reset all elements to default alignment">
+            🔄 Reset Layout
+          </button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-fullscreen-stage" onclick="toggleStageFullscreen()" title="Fullscreen Stage Mode (Press Esc to exit)">
+            ⛶ Fullscreen
+          </button>
+        </div>
+      </div>
+
+      <div class="step-body" style="padding-bottom:var(--sp-md);">
+        
+        <!-- Top Toolbar / Info strip -->
+        <div class="stage-info-bar">
+          <div class="stage-status-chip">
+            <span class="pulse-dot"></span>
+            <span id="stage-status-text">16:9 Canvas (1920×1080) · Ready</span>
+          </div>
+          <div class="stage-hint">
+            💡 <em>Drag Avatar, Captions, or Player directly on video. Resizing &amp; positioning update previous settings live!</em>
           </div>
         </div>
 
-        <div class="log-output" id="log-output">Ready to render...\n</div>
-      </div>
+        <!-- 16:9 Master Viewport Stage -->
+        <div class="stage-viewport-container" id="stage-viewport-container">
+          <div class="stage-canvas-16-9" id="stage-canvas">
+            
+            <!-- Layer 1: Background Scene with Live Blur & Dark Tint -->
+            <div class="stage-bg-layer" id="stage-bg-layer">
+              <img id="stage-bg-img" src="" alt="Background Scene" />
+              <div class="stage-bg-tint-overlay" id="stage-bg-tint"></div>
+            </div>
 
-      <!-- Success -->
-      <div class="success-banner" id="success-banner">
-        <span class="success-banner-icon">🎉</span>
-        <div>
-          <div class="success-banner-title" id="success-title">Video Rendered Successfully!</div>
-          <div class="success-banner-meta" id="success-meta">—</div>
-          <div class="success-actions">
-            <button class="btn btn-secondary" onclick="openOutputFolder()">📂 Open Folder</button>
-            <button class="btn btn-ghost"     onclick="resetForNewRender()">🔄 New Render</button>
+            <!-- Layer 2: Safe Guide Grid (Toggleable) -->
+            <div class="stage-grid-overlay" id="stage-grid" style="display:none;">
+              <div class="stage-safe-box">
+                <span class="safe-label-tl">90% Action Safe Zone</span>
+                <span class="safe-label-br">1920×1080 Target Frame</span>
+                <div class="stage-crosshair-center"></div>
+              </div>
+            </div>
+
+            <!-- Layer 3: Draggable & Resizable Avatar Portrait -->
+            <div class="stage-element stage-avatar-box" id="stage-avatar-box" tabindex="0" title="Author Avatar (Drag to move, corner handle to scale)">
+              <div class="stage-element-tag">👤 Author Avatar</div>
+              <img id="stage-avatar-img" src="" alt="Avatar" />
+              <div class="stage-resize-handle handle-br" data-target="avatar" title="Drag corner to scale avatar"></div>
+            </div>
+
+            <!-- Layer 4: Draggable & Area-Bounded Captions Box -->
+            <div class="stage-element stage-caption-box" id="stage-caption-box" tabindex="0" title="Captions Area (Drag box to move, handles to resize boundary)">
+              <div class="stage-element-tag">💬 Captions Boundary</div>
+              <div class="stage-caption-content" id="stage-caption-content">
+                <span class="demo-word" data-w="0">In</span>
+                <span class="demo-word" data-w="1">the</span>
+                <span class="demo-word" data-w="2">depths</span>
+                <span class="demo-word" data-w="3">of</span>
+                <span class="demo-word" data-w="4">adversity,</span>
+                <br/>
+                <span class="demo-word active" data-w="5">you</span>
+                <span class="demo-word active" data-w="6">find</span>
+                <span class="demo-word" data-w="7">your</span>
+                <span class="demo-word" data-w="8">truest</span>
+                <span class="demo-word" data-w="9">strength.</span>
+              </div>
+              <div class="stage-resize-handle handle-r"  data-target="caption" data-dir="r" title="Drag to adjust text width"></div>
+              <div class="stage-resize-handle handle-l"  data-target="caption" data-dir="l" title="Drag to adjust text width"></div>
+              <div class="stage-resize-handle handle-b"  data-target="caption" data-dir="b" title="Drag to adjust box height"></div>
+              <div class="stage-resize-handle handle-br" data-target="caption" data-dir="br" title="Drag to resize text boundary"></div>
+            </div>
+
+            <!-- Layer 5: Draggable & Resizable Audio Player / Visualizer Widget -->
+            <div class="stage-element stage-player-box" id="stage-player-box" tabindex="0" title="Audio Player Visualizer (Drag to move, handle to scale)">
+              <div class="stage-element-tag">🎵 Visualizer Widget</div>
+              <div class="stage-player-card-inner" id="stage-player-card">
+                <!-- Injected dynamically based on active preset -->
+              </div>
+              <div class="stage-resize-handle handle-br" data-target="player" title="Drag corner to scale player"></div>
+            </div>
+
+          </div><!-- /stage-canvas -->
+        </div><!-- /stage-viewport-container -->
+
+        <!-- Bottom Playback Control Bar -->
+        <div class="stage-controls-bar">
+          <button type="button" class="btn-play-preview" id="btn-play-preview" onclick="toggle20sPreview()" title="Play / Pause 20-Second Studio Preview">
+            <span id="preview-play-icon">▶</span>
+            <span id="preview-play-text">PLAY 20s PREVIEW</span>
+          </button>
+
+          <div class="stage-scrubber-wrap">
+            <span class="stage-timecode" id="stage-cur-time">0:00</span>
+            <input type="range" class="stage-scrubber" id="stage-scrubber" min="0" max="20" step="0.1" value="0"
+                   oninput="onStageScrub(this.value)" aria-label="20-second preview scrubber" />
+            <span class="stage-timecode" id="stage-tot-time">0:20</span>
+          </div>
+
+          <div class="stage-quick-stats" id="stage-selected-stats">
+            <span id="stage-elem-label">🎯 Click an element on canvas to inspect</span>
           </div>
         </div>
-      </div>
 
-    </div><!-- /render-section -->
+        <!-- ── Render & Export Pipeline (Inside Step 5) ───────────────────── -->
+        <div class="render-section" style="margin-top:var(--sp-xl);border-top:1px solid rgba(255,255,255,0.08);padding-top:var(--sp-xl);">
+          
+          <!-- Estimates -->
+          <div class="render-estimate" id="render-estimate">
+            <div class="estimate-item">
+              <div class="estimate-value" id="est-duration">—</div>
+              <div class="estimate-label">Voiceover Duration</div>
+            </div>
+            <div class="estimate-item">
+              <div class="estimate-value" id="est-clips">—</div>
+              <div class="estimate-label">B-Roll Clips</div>
+            </div>
+            <div class="estimate-item">
+              <div class="estimate-value" id="est-encoder">—</div>
+              <div class="estimate-label">GPU Encoder</div>
+            </div>
+            <div class="estimate-item">
+              <div class="estimate-value" id="est-render-time">—</div>
+              <div class="estimate-label">Est. Render Time</div>
+            </div>
+          </div>
+
+          <!-- Output filename -->
+          <div class="slider-group" style="margin-bottom:var(--sp-lg);">
+            <label class="slider-label" for="output-filename">📄 Output Filename</label>
+            <input type="text" id="output-filename" class="text-input" style="margin-top:var(--sp-sm);"
+                   placeholder="my_stoic_video.mp4"
+                   aria-label="Output video filename" />
+          </div>
+
+          <!-- Render Button -->
+          <button class="btn btn-render" id="btn-render" onclick="startRender()" aria-label="Start GPU render">
+            🚀 RENDER 1-HOUR VIDEO (GPU TURBO)
+          </button>
+
+          <!-- Progress -->
+          <div class="progress-section" id="progress-section">
+            <div>
+              <div class="progress-bar-wrap">
+                <div class="progress-bar-fill" id="progress-bar" style="width:0%"></div>
+              </div>
+              <div class="progress-status" style="margin-top:var(--sp-sm);">
+                <span class="progress-message" id="progress-message">Starting...</span>
+                <span class="progress-pct" id="progress-pct">0%</span>
+              </div>
+            </div>
+
+            <div class="log-output" id="log-output">Ready to render...\n</div>
+          </div>
+
+          <!-- Success -->
+          <div class="success-banner" id="success-banner">
+            <span class="success-banner-icon">🎉</span>
+            <div>
+              <div class="success-banner-title" id="success-title">Video Rendered Successfully!</div>
+              <div class="success-banner-meta" id="success-meta">—</div>
+              <div class="success-actions">
+                <button class="btn btn-secondary" onclick="openOutputFolder()">📂 Open Folder</button>
+                <button class="btn btn-ghost"     onclick="resetForNewRender()">🔄 New Render</button>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /render-section -->
+
+        <!-- Wizard Nav Bar for Step 5 -->
+        <div class="wizard-nav-bar">
+          <button type="button" class="btn-wizard-prev" onclick="prevWizardStep()">
+            ← Back: 💬 Subtitles &amp; Player
+          </button>
+          <div class="wizard-step-counter">Step 5 of 5 · Studio Canvas &amp; Render</div>
+          <div></div>
+        </div>
+
+      </div><!-- /.step-body -->
+    </div><!-- /#wizard-step-5 -->
 
   </main><!-- /main-content -->
 

@@ -13,6 +13,14 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
+# Fix Windows console unicode printing
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # ── Path Setup ────────────────────────────────────────────────────────────────
 if getattr(sys, "frozen", False):
     APP_DIR    = Path(sys.executable).resolve().parent
@@ -140,4 +148,6 @@ def main():
 
 
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()
     main()

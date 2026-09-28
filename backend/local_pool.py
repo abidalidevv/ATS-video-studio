@@ -10,11 +10,12 @@ Key Design:
 - Uses ffprobe for accurate duration reading (no mutagen dependency)
 """
 import os
+import time
 import random
 import subprocess
 import json
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from .config import find_ffprobe
 
 
@@ -43,23 +44,83 @@ def get_clip_duration(clip_path: str) -> float:
     return 30.0
 
 
-def scan_folder(folder_path: str) -> List[str]:
+def probe_clip_info(clip_path: str) -> Dict[str, Any]:
     """
-    Recursively scans a folder for valid video clip files.
-    Returns a list of absolute path strings.
+    Returns media information: width, height, duration, has_audio.
     """
-    folder = Path(folder_path)
+    ffprobe = find_ffprobe()
+    cmd = [
+        ffprobe, "-v", "error",
+        "-show_entries", "stream=width,height,codec_type",
+        "-show_entries", "format=duration",
+        "-of", "json",
+        str(clip_path)
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        data = json.loads(res.stdout) if res.stdout else {}
+        dur = float(data.get("format", {}).get("duration", 30.0))
+        streams = data.get("streams", [])
+        video_streams = [s for s in streams if s.get("codec_type") == "video" and s.get("width")]
+        w = int(video_streams[0]["width"]) if video_streams else 1920
+        h = int(video_streams[0]["height"]) if video_streams else 1080
+        has_audio = any(s.get("codec_type") == "audio" for s in streams)
+        return {
+            "duration": max(0.5, dur),
+            "width": w,
+            "height": h,
+            "is_landscape": w >= h,
+            "has_audio": has_audio
+        }
+    except Exception as e:
+        print(f"[LocalPool] probe error for {clip_path}: {e}")
+        return {"duration": 30.0, "width": 1920, "height": 1080, "is_landscape": True, "has_audio": False}
+
+
+# In-memory scan cache: folder_path -> (timestamp, list_of_clip_paths)
+_FOLDER_CACHE: Dict[str, Tuple[float, List[str]]] = {}
+
+
+def scan_folder(folder_path: str, landscape_only: bool = True, force_refresh: bool = False) -> List[str]:
+    """
+    Ultra-fast recursive scan of a folder for valid video clip files.
+    Skips hidden/system directories ($RECYCLE.BIN, .git, temp) and caches results
+    for 5 minutes to prevent UI freezes when browsing or selecting clips.
+    """
+    folder_str = str(folder_path).strip().strip('"').strip("'")
+    if not folder_str:
+        raise FileNotFoundError("Folder path cannot be empty")
+
+    folder = Path(folder_str).resolve()
+    folder_key = str(folder)
+    now = time.time()
+
+    # Return cached results if fresh (< 300s)
+    if not force_refresh and folder_key in _FOLDER_CACHE:
+        cached_time, cached_clips = _FOLDER_CACHE[folder_key]
+        if now - cached_time < 300:
+            return cached_clips
+
     if not folder.exists() or not folder.is_dir():
         raise FileNotFoundError(f"B-Roll folder not found: {folder_path}")
 
     clips = []
-    for p in folder.rglob("*"):
-        if p.is_file() and p.suffix.lower() in VALID_EXTENSIONS:
-            clips.append(str(p.resolve()))
+    # Directories to strictly skip for instant traversal
+    SKIP_DIRS = {"$recycle.bin", "system volume information", ".git", "node_modules", "temp", "tmp", "__pycache__"}
+
+    for root, dirs, files in os.walk(str(folder)):
+        # Prune search in junk/hidden folders
+        dirs[:] = [d for d in dirs if d.lower() not in SKIP_DIRS and not d.startswith(".")]
+        for f in files:
+            ext = os.path.splitext(f)[1].lower()
+            if ext in VALID_EXTENSIONS:
+                clips.append(os.path.join(root, f))
 
     if not clips:
         raise FileNotFoundError(f"No video clips found in '{folder_path}'. "
                                 f"Supported formats: {', '.join(sorted(VALID_EXTENSIONS))}")
+
+    _FOLDER_CACHE[folder_key] = (now, clips)
     return clips
 
 
@@ -67,27 +128,34 @@ def select_local_clips(
     folder_path: str,
     target_duration_sec: float,
     speed_multiplier: float = 1.0,
-    shuffle_seed: int | None = None
+    shuffle_seed: int | None = None,
+    pacing_mode: str = "full",
+    min_clip_sec: float = 5.0,
+    max_clip_sec: float = 9.0
 ) -> Dict[str, Any]:
     """
     Selects a non-repeating sequence of local clips that fills the voiceover duration.
 
     Args:
-        folder_path:       Path to local B-Roll folder (scanned recursively).
+        folder_path:         Path to local B-Roll folder (scanned recursively).
         target_duration_sec: Total voiceover duration in seconds to fill.
-        speed_multiplier:  Slow-motion factor (0.5 = half speed, 1.0 = normal).
-                           Clips appear longer: effective_dur = raw_dur / speed_multiplier.
-        shuffle_seed:      Optional random seed for reproducibility.
+        speed_multiplier:    Slow-motion factor (0.5 = half speed, 1.0 = normal).
+                             Clips appear longer: effective_dur = raw_dur / speed_multiplier.
+        shuffle_seed:        Optional random seed for reproducibility.
+        pacing_mode:         'full' (use whole clip as-is) or 'fast_cuts' (dynamic YouTube fair use trimming).
+        min_clip_sec:        Minimum slice duration in seconds for dynamic cuts (default: 5.0s).
+        max_clip_sec:        Maximum slice duration in seconds for dynamic cuts (default: 9.0s).
 
     Returns:
         Dict with:
-            - clips:            List of {path, raw_duration, effective_duration, setpts_factor}
+            - clips:            List of {path, raw_duration, effective_duration, setpts_factor, start_offset, slice_dur, is_sliced}
             - total_effective:  Total effective duration of selected clips (>= target)
             - total_raw:        Total raw duration of source files
             - clip_count:       Number of clips selected
             - folder_clip_count: Total available clips in folder
             - wrapped:          True if folder was exhausted and re-shuffled
             - speed_multiplier: The speed_multiplier used
+            - pacing_mode:      Pacing mode used ('full' or 'fast_cuts')
     """
     speed_multiplier = max(0.1, min(2.0, float(speed_multiplier)))
     # setpts factor: if speed=0.75, setpts = 1/0.75 ≈ 1.333 (stretches time)
@@ -107,7 +175,13 @@ def select_local_clips(
     used_paths: set = set()
     pool_index = 0
 
-    while accumulated_dur < target_duration_sec:
+    # Dynamic cuts parameters
+    is_fast_cuts = (str(pacing_mode).lower() in ("fast_cuts", "dynamic", "fair_use"))
+    min_sec = max(2.0, float(min_clip_sec))
+    max_sec = max(min_sec + 0.5, float(max_clip_sec))
+
+    # Add 4s safety buffer so video never ends before audio (prevents -shortest cutting off voiceover tail)
+    while accumulated_dur < (target_duration_sec + 4.0):
         if pool_index >= len(pool):
             # Pool exhausted — re-shuffle unused clips for wrap-around
             remaining = [c for c in all_clips if c not in used_paths]
@@ -127,14 +201,30 @@ def select_local_clips(
         pool_index += 1
 
         raw_dur = get_clip_duration(clip_path)
-        effective_dur = raw_dur / speed_multiplier  # screen-time after slow-mo
+
+        # Dynamic cuts: if enabled and clip is longer than min_sec, slice randomly
+        if is_fast_cuts and raw_dur > min_sec:
+            target_slice = rng.uniform(min_sec, min(raw_dur, max_sec))
+            max_start = max(0.0, raw_dur - target_slice)
+            start_offset = rng.uniform(0.0, max_start)
+            slice_dur = target_slice
+            is_sliced = True
+            effective_dur = slice_dur / speed_multiplier
+        else:
+            slice_dur = raw_dur
+            start_offset = 0.0
+            is_sliced = False
+            effective_dur = raw_dur / speed_multiplier
 
         used_paths.add(clip_path)
         selected.append({
-            "path":              clip_path,
-            "raw_duration":      round(raw_dur, 3),
+            "path":               clip_path,
+            "raw_duration":       round(raw_dur, 3),
             "effective_duration": round(effective_dur, 3),
-            "setpts_factor":     round(setpts_factor, 4),
+            "setpts_factor":      round(setpts_factor, 4),
+            "start_offset":       round(start_offset, 3),
+            "slice_dur":          round(slice_dur, 3),
+            "is_sliced":          is_sliced,
         })
         accumulated_dur += effective_dur
 
@@ -149,28 +239,127 @@ def select_local_clips(
         "wrapped":            wrapped,
         "speed_multiplier":   speed_multiplier,
         "setpts_factor":      round(setpts_factor, 4),
+        "pacing_mode":        "fast_cuts" if is_fast_cuts else "full",
     }
 
 
-def write_concat_list(clips: List[Dict[str, Any]], output_path: str) -> str:
+def prepare_clean_concat_clips(clips: List[Dict[str, Any]], work_dir: str) -> List[str]:
     """
-    Writes an FFmpeg concat demuxer list file for the selected clips.
+    Guarantees every clip fed to the FFmpeg concat demuxer has identical stream structure:
+    1. Pure video only (-an) so clips with audio don't cause demuxer stream-count mismatch crashes.
+    2. Supports Dynamic Fair-Use Slicing (-ss {offset} -t {slice_dur}) with frame-accurate re-encode.
+    3. If a clip is not standard 1080p landscape (e.g. 4K or 720p), normalizes it to 1920x1080@30fps.
+    4. If a clip is already 1920x1080 with no audio and not sliced, re-uses it directly (0 latency).
+    5. If a clip is 1920x1080 with audio and not sliced, strips audio in <0.15s via stream copy.
+    """
+    from .config import find_ffmpeg
+    ffmpeg = find_ffmpeg()
+    out_dir = Path(work_dir) / "clean_broll"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    cleaned_paths = []
+    for idx, c in enumerate(clips):
+        raw_p = c["path"] if isinstance(c, dict) else str(c)
+        is_sliced = c.get("is_sliced", False) if isinstance(c, dict) else False
+        start_offset = float(c.get("start_offset", 0.0)) if isinstance(c, dict) else 0.0
+        slice_dur = float(c.get("slice_dur", 0.0)) if isinstance(c, dict) else 0.0
+
+        info = probe_clip_info(raw_p)
+        w, h = info["width"], info["height"]
+        has_audio = info["has_audio"]
+        stem = Path(raw_p).stem
+
+        # Case 0: Dynamic fast cut / slice requested — extract clean slice normalized to 1080p@30fps
+        if is_sliced and slice_dur > 0:
+            clean_file = out_dir / f"clean_{idx:03d}_{stem}_s{int(start_offset*10)}_d{int(slice_dur*10)}.mp4"
+            clean_path = str(clean_file)
+            if clean_file.exists() and clean_file.stat().st_size > 1000:
+                cleaned_paths.append(clean_path)
+                continue
+
+            cmd = [
+                ffmpeg, "-y",
+                "-ss", str(round(start_offset, 3)),
+                "-i", raw_p,
+                "-t", str(round(slice_dur, 3)),
+                "-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,fps=30",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+                "-an",
+                clean_path
+            ]
+            try:
+                subprocess.run(cmd, capture_output=True, check=True, timeout=90)
+                cleaned_paths.append(clean_path)
+                continue
+            except Exception as e:
+                print(f"[LocalPool] Slicing error for {raw_p}: {e}, falling back to whole clip")
+
+        # Case 1: Already clean 1080p video with NO audio — zero processing needed
+        if w == 1920 and h == 1080 and not has_audio:
+            cleaned_paths.append(raw_p)
+            continue
+
+        clean_file = out_dir / f"clean_{idx:03d}_{stem}.mp4"
+        clean_path = str(clean_file)
+
+        # Reuse if already prepared in this job
+        if clean_file.exists() and clean_file.stat().st_size > 1000:
+            cleaned_paths.append(clean_path)
+            continue
+
+        # Case 2: Already 1080p, but has audio track — strip audio in <0.15s via copy
+        if w == 1920 and h == 1080 and has_audio:
+            cmd = [
+                ffmpeg, "-y",
+                "-i", raw_p,
+                "-c:v", "copy",
+                "-an",
+                "-avoid_negative_ts", "make_zero",
+                clean_path
+            ]
+            try:
+                subprocess.run(cmd, capture_output=True, check=True, timeout=30)
+                cleaned_paths.append(clean_path)
+                continue
+            except Exception as e:
+                print(f"[LocalPool] Fast audio strip failed for {raw_p}: {e}, falling back to normalize")
+
+        # Case 3: 4K, 720p, or unusual dimensions — fast normalize to 1920x1080 30fps
+        cmd = [
+            ffmpeg, "-y",
+            "-i", raw_p,
+            "-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,fps=30",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+            "-an",
+            clean_path
+        ]
+        try:
+            subprocess.run(cmd, capture_output=True, check=True, timeout=90)
+            cleaned_paths.append(clean_path)
+        except Exception as e:
+            print(f"[LocalPool] Normalization warning for {raw_p}: {e}")
+            cleaned_paths.append(raw_p)  # Fallback to original
+
+    return cleaned_paths
+
+
+def write_concat_list(clip_paths: List[str], output_path: str) -> str:
+    """
+    Writes an FFmpeg concat demuxer list file for the provided clip paths.
     Each clip path is written as an absolute path with proper escaping.
 
     Args:
-        clips:       List of clip dicts from select_local_clips()
+        clip_paths:  List of path strings
         output_path: Where to write the concat_list.txt file
 
     Returns:
         Absolute path to the written concat_list.txt
     """
     lines = ["# FFmpeg concat demuxer list — Avatar Storyteller Engine"]
-    for clip in clips:
-        # Ensure absolute path, escape backslashes and single quotes for FFmpeg concat format
-        abs_p = Path(clip["path"]).resolve()
+    for p in clip_paths:
+        abs_p = Path(p).resolve()
         path_escaped = str(abs_p).replace("\\", "/").replace("'", "'\\''")
         lines.append(f"file '{path_escaped}'")
-        # Note: setpts is applied in filtergraph, not concat list
     content = "\n".join(lines) + "\n"
     output_path = str(output_path)
     with open(output_path, "w", encoding="utf-8") as f:
@@ -186,9 +375,14 @@ def get_folder_stats(folder_path: str) -> Dict[str, Any]:
     try:
         clips = scan_folder(folder_path)
         count = len(clips)
-        total_size_mb = sum(os.path.getsize(p) for p in clips) / (1024 * 1024)
+        if count > 150:
+            sample = clips[:40]
+            avg_size = sum(os.path.getsize(p) for p in sample) / len(sample)
+            total_size_mb = (avg_size * count) / (1024 * 1024)
+        else:
+            total_size_mb = sum(os.path.getsize(p) for p in clips) / (1024 * 1024)
         extensions = {}
-        for c in clips:
+        for c in clips[:100]:
             ext = Path(c).suffix.lower()
             extensions[ext] = extensions.get(ext, 0) + 1
         return {

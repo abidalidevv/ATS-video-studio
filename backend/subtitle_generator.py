@@ -75,18 +75,18 @@ PRESET_STYLES = {
         "name": "Clean Minimalist",
         "font_name": "Inter",
         "fallback_font": "Segoe UI",
-        "font_size": 22,
+        "font_size": 24,
         "primary_color": "&H00FFFFFF",
         "highlight_color": "&H00E0E0E0",   # Soft Gray highlight
-        "outline_color": "&H00151515",
-        "outline_width": 2,
+        "outline_color": "&H00000000",
+        "outline_width": 4.0,
         "shadow_color": "&H80000000",
-        "shadow_dist": 1,
+        "shadow_dist": 2,
         "bold": 1,
-        "uppercase": False,
+        "uppercase": True,
         "animation": "active_word_highlight",
         "alignment": 2,
-        "margin_v": 60
+        "margin_v": 65
     },
     "mrbeast_punch": {
         "name": "MrBeast Punchy Gold",
@@ -109,18 +109,18 @@ PRESET_STYLES = {
         "name": "Ali Abdaal Aesthetic",
         "font_name": "Poppins",
         "fallback_font": "Inter",
-        "font_size": 22,
+        "font_size": 26,
         "primary_color": "&H00FFFFFF",     # Clean Crisp White
-        "highlight_color": "&H004DA9FF",   # Warm Amber / Orange (#FFA94D)
-        "outline_color": "&H001A1A1A",
-        "outline_width": 2.5,
-        "shadow_color": "&H60000000",
-        "shadow_dist": 1.5,
+        "highlight_color": "&H00F8BD38",   # Electric Sky Blue / Cyan (#38BDF8) matching preview
+        "outline_color": "&H00000000",     # Deep Solid Black outline
+        "outline_width": 4.5,
+        "shadow_color": "&HA0000000",
+        "shadow_dist": 2.5,
         "bold": 1,
-        "uppercase": False,
+        "uppercase": True,                 # ALL CAPS viral look matching preview
         "animation": "active_word_highlight",
         "alignment": 2,
-        "margin_v": 65
+        "margin_v": 70
     },
     "iman_gadzhi": {
         "name": "Iman Gadzhi Luxury",
@@ -160,18 +160,18 @@ PRESET_STYLES = {
         "name": "Vox / Podcast Box",
         "font_name": "Outfit",
         "fallback_font": "Montserrat",
-        "font_size": 22,
+        "font_size": 24,
         "primary_color": "&H00FFFFFF",     # White
-        "highlight_color": "&H0000E6FF",   # Sharp Amber Yellow (#FFE600)
-        "outline_color": "&H00111111",
-        "outline_width": 3,
+        "highlight_color": "&H00FFE500",   # Sharp Electric Cyan (#00E5FF)
+        "outline_color": "&H00000000",
+        "outline_width": 4.0,
         "shadow_color": "&HC0000000",
         "shadow_dist": 2,
         "bold": 1,
-        "uppercase": False,
+        "uppercase": True,
         "animation": "active_word_highlight",
         "alignment": 2,
-        "margin_v": 65
+        "margin_v": 70
     },
     "streamer_lime": {
         "name": "Streamer High-Voltage",
@@ -201,6 +201,108 @@ PRESET_STYLES = {
         "outline_width": 4,
         "shadow_color": "&HA0000000",
         "shadow_dist": 2,
+        "bold": 1,
+        "uppercase": True,
+        "animation": "active_word_highlight",
+        "alignment": 2,
+        "margin_v": 70
+    },
+    "retro_vintage": {
+        "name": "Retro Vintage 70s",
+        "font_name": "Arial Black",
+        "fallback_font": "Impact",
+        "font_size": 25,
+        "primary_color": "&H003CA0FF",     # Warm Amber Orange (#FFA03C)
+        "highlight_color": "&H0000FFFF",   # Punchy Yellow (#FFFF00)
+        "outline_color": "&H00101530",     # Deep retro brown/black
+        "outline_width": 4.5,
+        "shadow_color": "&HA0000000",
+        "shadow_dist": 3,
+        "bold": 1,
+        "uppercase": True,
+        "animation": "active_word_highlight",
+        "alignment": 2,
+        "margin_v": 72
+    },
+    "midnight_blue": {
+        "name": "Midnight Blue Neon",
+        "font_name": "Montserrat",
+        "fallback_font": "Arial",
+        "font_size": 24,
+        "primary_color": "&H00FFFFFF",     # Pure White
+        "highlight_color": "&H00FF9000",   # Electric Deep Blue (#0090FF)
+        "outline_color": "&H004A150A",     # Midnight Navy outline
+        "outline_width": 4,
+        "shadow_color": "&H70FF9000",     # Blue Glow
+        "shadow_dist": 3,
+        "bold": 1,
+        "uppercase": True,
+        "animation": "active_word_highlight",
+        "alignment": 2,
+        "margin_v": 70
+    },
+    "true_crime": {
+        "name": "True Crime Cold",
+        "font_name": "Courier New",
+        "fallback_font": "Impact",
+        "font_size": 24,
+        "primary_color": "&H00E0E0E0",     # Cold Pale White
+        "highlight_color": "&H002020E0",   # Blood Crimson Red (#E02020)
+        "outline_color": "&H00050505",     # Deep Inky Black
+        "outline_width": 4,
+        "shadow_color": "&HB0000000",
+        "shadow_dist": 2,
+        "bold": 1,
+        "uppercase": True,
+        "animation": "active_word_highlight",
+        "alignment": 2,
+        "margin_v": 70
+    },
+    "wealth_cash": {
+        "name": "Wealth & Cash Mint",
+        "font_name": "Impact",
+        "fallback_font": "Arial Black",
+        "font_size": 26,
+        "primary_color": "&H00FFFFFF",     # Clean White
+        "highlight_color": "&H0070DF10",   # Emerald Mint Green (#10DF70)
+        "outline_color": "&H0010300A",     # Deep Forest Green outline
+        "outline_width": 4.5,
+        "shadow_color": "&H90000000",
+        "shadow_dist": 2.5,
+        "bold": 1,
+        "uppercase": True,
+        "animation": "active_word_highlight",
+        "alignment": 2,
+        "margin_v": 75
+    },
+    "cosmic_violet": {
+        "name": "Cosmic Deep Violet",
+        "font_name": "Montserrat",
+        "fallback_font": "Arial Black",
+        "font_size": 25,
+        "primary_color": "&H00FFFFFF",     # Pure White
+        "highlight_color": "&H00FC42B2",   # Starlight Violet (#B242FC)
+        "outline_color": "&H00350B40",     # Deep Cosmos Plum outline
+        "outline_width": 4,
+        "shadow_color": "&H60FC42B2",     # Violet Nebula Glow
+        "shadow_dist": 3,
+        "bold": 1,
+        "uppercase": True,
+        "animation": "active_word_highlight",
+        "alignment": 2,
+        "margin_v": 72
+    },
+    "cinematic_bronze": {
+        "name": "Cinematic Bronze Gold",
+        "font_name": "Cinzel",
+        "fallback_font": "Georgia",
+        "font_size": 23,
+        "primary_color": "&H00E8F0F8",     # Champagne White
+        "highlight_color": "&H00258BD4",   # Antique Bronze Gold (#D48B25)
+        "outline_color": "&H00081220",     # Sepia Charcoal outline
+        "outline_width": 3.5,
+        "shadow_color": "&HA0000000",
+        "shadow_dist": 2.5,
         "bold": 1,
         "uppercase": True,
         "animation": "active_word_highlight",
@@ -374,37 +476,81 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 anim = r"{\fad(180,180)\t(0,120,\fscx106\fscy106)\t(120,240,\fscx100\fscy100)}"
                 dialogue_lines.append(f"Dialogue: 1,{c_start},{c_end},Callout,,0,0,0,,{anim}{c_clean}")
 
+    all_words = []
     for scene in scenes:
-        words = scene.get("words", [])
-        if not words:
-            # Fallback if no word level timestamps: display whole sentence for scene duration
-            t_start = format_ass_time(float(scene.get("start", 0)))
-            t_end = format_ass_time(float(scene.get("end", 0)))
+        for w in scene.get("words", []):
+            raw_w = str(w.get("word", "")).strip()
+            if raw_w:
+                all_words.append({
+                    "word": raw_w,
+                    "start": float(w.get("start", 0)),
+                    "end": float(w.get("end", 0))
+                })
+
+    if not all_words:
+        # Fallback if no word-level timestamps: display scenes with strictly non-overlapping boundaries
+        sorted_scenes = sorted(scenes, key=lambda s: float(s.get("start", 0)))
+        for s_idx, scene in enumerate(sorted_scenes):
+            s_start = float(scene.get("start", 0))
+            s_end = float(scene.get("end", 0))
+            if s_idx < len(sorted_scenes) - 1:
+                next_start = float(sorted_scenes[s_idx + 1].get("start", 0))
+                s_end = min(s_end, max(s_start + 0.1, next_start - 0.01))
+            if s_end <= s_start:
+                s_end = s_start + 0.5
+            t_start = format_ass_time(s_start)
+            t_end = format_ass_time(s_end)
             stext = scene.get("text", "").replace('{', '(').replace('}', ')')
             if uppercase:
                 stext = stext.upper()
             dialogue_lines.append(f"Dialogue: 0,{t_start},{t_end},Default,,0,0,0,,{stext}")
-            continue
+    else:
+        # Sort all words strictly chronologically
+        all_words.sort(key=lambda w: w["start"])
 
-        # Group words into chunks of 3-5 words for optimal TikTok/CapCut/YouTube Shorts readability
-        word_chunks = _chunk_words(words, max_chunk_words=5)
+        # Sanitize word boundaries: no word can end after the next word starts
+        for i in range(len(all_words) - 1):
+            if all_words[i]["end"] > all_words[i + 1]["start"]:
+                all_words[i]["end"] = max(all_words[i]["start"] + 0.04, all_words[i + 1]["start"])
 
-        for chunk in word_chunks:
-            chunk_start = chunk[0]["start"]
-            chunk_end = chunk[-1]["end"]
+        word_chunks = _chunk_words(all_words, max_chunk_words=5)
 
-            # For each word in the chunk, create a continuous sub-interval where that word is actively highlighted
+        # Pre-compute strict chunk boundaries to prevent any cross-chunk overlap
+        chunk_ends = []
+        for chunk_idx, chunk in enumerate(word_chunks):
+            c_end_natural = chunk[-1]["end"]
+            if chunk_idx < len(word_chunks) - 1:
+                next_start = word_chunks[chunk_idx + 1][0]["start"]
+                # Hard cap: chunk MUST end before next chunk starts
+                c_end = min(c_end_natural + 0.25, next_start - 0.02)
+                if c_end <= chunk[0]["start"]:
+                    c_end = max(chunk[0]["start"] + 0.05, next_start - 0.02)
+            else:
+                c_end = c_end_natural + 0.40
+            chunk_ends.append(c_end)
+
+        for chunk_idx, chunk in enumerate(word_chunks):
+            c_start = chunk[0]["start"]
+            c_end = chunk_ends[chunk_idx]
+
             for active_idx, active_word in enumerate(chunk):
-                # Start: if first word, start at chunk_start; otherwise at word start
-                t_start_val = chunk_start if active_idx == 0 else active_word["start"]
-                # End: extend to the start of the next word to eliminate inter-word flicker gaps!
+                w_start_val = c_start if active_idx == 0 else active_word["start"]
                 if active_idx < len(chunk) - 1:
-                    t_end_val = chunk[active_idx + 1]["start"]
+                    # End when next word starts (strict)
+                    w_end_val = min(chunk[active_idx + 1]["start"], c_end)
                 else:
-                    t_end_val = max(active_word["end"], chunk_end + 0.15)
+                    # Last word in chunk ends at chunk boundary
+                    w_end_val = c_end
 
-                w_start = format_ass_time(t_start_val)
-                w_end = format_ass_time(t_end_val)
+                # Safety clamp: ensure end > start
+                if w_end_val <= w_start_val:
+                    w_end_val = w_start_val + 0.05
+
+                # Hard clamp: never exceed chunk boundary
+                w_end_val = min(w_end_val, c_end)
+
+                w_start = format_ass_time(w_start_val)
+                w_end = format_ass_time(w_end_val)
 
                 # Build styled line
                 line_parts = []
@@ -414,7 +560,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         raw_word = raw_word.upper()
 
                     if idx == active_idx:
-                        # Active word highlighted with accent color (and subtle scale pop if kinetic animation is enabled)
                         anim_style = str((custom_options or {}).get("animation", "word_bounce")).lower().strip()
                         if anim_style == "none":
                             line_parts.append(f"{{\\c{highlight_c}}}{raw_word}{{\\c{primary_c}}}")
@@ -434,16 +579,40 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
 def _chunk_words(words: List[Dict[str, Any]], max_chunk_words: int = 5) -> List[List[Dict[str, Any]]]:
-    """Splits a list of words into readable sentence chunks (3-5 words each)."""
+    """
+    Splits words into clean 3-5 word chunks.
+    Avoids 1-word orphan lines and splits intelligently on punctuation.
+    """
     chunks = []
     current = []
-    for w in words:
+    for i, w in enumerate(words):
         current.append(w)
-        # Break on punctuation or max chunk size
         text = w.get("word", "")
-        if len(current) >= max_chunk_words or text.endswith(('.', '!', '?', ',', ';')):
+        is_strong_punct = any(text.endswith(p) for p in ('.', '!', '?'))
+        is_comma = any(text.endswith(p) for p in (',', ';', ':'))
+        remaining = len(words) - (i + 1)
+
+        if len(current) >= max_chunk_words:
+            # If only 1 word remains after this, keep it in this chunk (up to 6 words)
+            # rather than leaving a lonely single word on its own line
+            if remaining == 1 and len(current) < 6:
+                continue
             chunks.append(current)
             current = []
+        elif is_strong_punct and len(current) >= 2:
+            if remaining != 1:
+                chunks.append(current)
+                current = []
+        elif is_comma and len(current) >= 3:
+            if remaining != 1:
+                chunks.append(current)
+                current = []
+
     if current:
-        chunks.append(current)
+        if chunks and len(current) == 1 and len(chunks[-1]) < 6:
+            chunks[-1].extend(current)
+        else:
+            chunks.append(current)
+
     return chunks
+

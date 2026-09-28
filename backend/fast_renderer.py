@@ -21,7 +21,7 @@ import subprocess
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from .config import (
-    find_ffmpeg, TEMP_DIR, OUTPUT_DIR,
+    find_ffmpeg, TEMP_DIR, OUTPUT_DIR, FONTS_DIR,
     detect_gpu_encoder, get_encoder_params, load_settings
 )
 from .local_pool import write_concat_list
@@ -32,29 +32,31 @@ def _build_avatar_overlay_coords(
     avatar_width: int,
     avatar_height: int,
     canvas_w: int = 1920,
-    canvas_h: int = 1080
+    canvas_h: int = 1080,
+    custom_x: Optional[int] = None,
+    custom_y: Optional[int] = None
 ) -> str:
     """
     Returns FFmpeg overlay x:y coordinates string for the avatar position.
-
-    Left:   Avatar in left 40% — x at 40px margin, y centered
-    Right:  Avatar in right 40% — x at canvas_w - avatar_w - 40, y centered
-    Center: Avatar horizontally centered, y centered (slightly above center)
+    Supports free XY coordinates from interactive Studio Canvas.
     """
-    y_center = f"(H-h)/2"
+    if custom_x is not None and custom_y is not None:
+        return f"x={int(round(float(custom_x)))}:y={int(round(float(custom_y)))}"
+
+    y_bottom = "H-h"
 
     if position == "left":
-        x = "40"
-        y = y_center
+        x = "0"
+        y = y_bottom
     elif position == "right":
-        x = f"W-w-40"
-        y = y_center
+        x = "W-w"
+        y = y_bottom
     elif position == "center":
-        x = f"(W-w)/2"
-        y = f"(H-h)/2-40"
+        x = "(W-w)/2"
+        y = y_bottom
     else:
-        x = f"W-w-40"
-        y = y_center
+        x = "W-w"
+        y = y_bottom
 
     return f"x={x}:y={y}"
 
@@ -68,15 +70,35 @@ def _build_filter_complex(
     avatar_height: int,
     ass_subtitle_path: str,
     canvas_w: int = 1920,
-    canvas_h: int = 1080
+    canvas_h: int = 1080,
+    visualizer_enabled: bool = False,
+    visualizer_style: str = "glass_pill_cyan",
+    visualizer_position: str = "top_center",
+    visualizer_card_path: Optional[str] = None,
+    audio_duration: float = 0.0,
+    card_input_idx: int = 3,
+    avatar_opacity: float = 1.0,
+    avatar_custom_x: Optional[int] = None,
+    avatar_custom_y: Optional[int] = None,
+    visualizer_custom_x: Optional[int] = None,
+    visualizer_custom_y: Optional[int] = None,
+    visualizer_scale: float = 1.0,
+    visualizer_mode: str = "template",
+    custom_vis_video_path: Optional[str] = None,
+    chroma_key_color: str = "#00FF00",
+    chroma_similarity: float = 0.25,
+    chroma_blend: float = 0.08,
+    target_vis_w: int = 400,
+    target_vis_h: int = 200
 ) -> str:
     """
     Builds the single-pass FFmpeg filter_complex string.
 
     Stream assignments:
         [0:v] = concat B-Roll video
-        [1:v] = avatar PNG (loop=1)
+        [1:v] = avatar PNG (no loop, repeated via overlay eof_action=repeat)
         [2:a] = processed voiceover audio
+        [3:v] = (optional) audio player card PNG OR looped custom green-screen video
     """
     # Slow-motion factor: if speed=0.75, setpts = 1/0.75 ≈ 1.333
     setpts_factor = 1.0 / max(0.1, speed_multiplier)
@@ -93,40 +115,118 @@ def _build_filter_complex(
     tint_alpha  = max(0.20, 1.0 - float(dark_tint))
     tint_filter = f"colorchannelmixer=aa={tint_alpha:.3f}"
 
-    # Avatar overlay coordinates
+    # Avatar overlay coordinates (handles free canvas drag & drop)
     overlay_coords = _build_avatar_overlay_coords(
         position=avatar_position,
         avatar_width=avatar_width,
         avatar_height=avatar_height,
         canvas_w=canvas_w,
-        canvas_h=canvas_h
+        canvas_h=canvas_h,
+        custom_x=avatar_custom_x,
+        custom_y=avatar_custom_y
     )
 
-    # Escape ASS path for FFmpeg filter (backslashes → forward slashes, colons escaped)
-    ass_path_escaped = str(Path(ass_subtitle_path).resolve()).replace("\\", "/").replace(":", "\\:")
+    # Escape paths for FFmpeg filter_complex on Windows:
+    # Drive letter colon must be escaped as \: and backslashes → forward slashes
+    def _ffmpeg_path(p: str) -> str:
+        p = str(Path(p).resolve()).replace("\\", "/")
+        # Escape the colon in drive letter (e.g. C:/ → C\:/)
+        if len(p) >= 2 and p[1] == ":":
+            p = p[0] + "\\:" + p[2:]
+        # Escape any remaining unescaped colons
+        return p
+
+    ass_path_escaped = _ffmpeg_path(ass_subtitle_path)
 
     # Build filter graph
     filters = []
 
-    # Step 1: Scale stock footage to 1920x1080, apply slow-mo + blur + tint to background only
+    # Strictly monotonic frame-based PTS calculation:
+    eff_source_fps = 30.0 * max(0.1, float(speed_multiplier))
+
+    # Step 1: Standardize stock footage to 1920x1080 (16:9 square pixels), apply slow-mo, then smooth to 30fps
     filters.append(
         f"[0:v]scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=increase:flags=fast_bilinear,"
         f"crop={canvas_w}:{canvas_h},"
-        f"setpts={setpts_factor:.4f}*PTS,"
+        f"setsar=1,"
+        f"setpts=N/({eff_source_fps:.4f}*TB),"
+        f"fps=30,"
         f"{blur_filter},"
         f"{tint_filter}[bg]"
     )
 
     # Step 2: Overlay avatar on background (avatar is crisp, not blurred)
-    # The avatar PNG is already pre-processed and proportionally sized by Pillow in Step 3
+    if avatar_opacity < 0.99:
+        op = max(0.1, min(1.0, float(avatar_opacity)))
+        filters.append(
+            f"[1:v]format=rgba,colorchannelmixer=aa={op:.3f}[avatar_trans]"
+        )
+        avatar_stream = "avatar_trans"
+    else:
+        avatar_stream = "1:v"
+
     filters.append(
-        f"[bg][1:v]overlay={overlay_coords}:shortest=0[comp]"
+        f"[bg][{avatar_stream}]overlay={overlay_coords}:eof_action=repeat[comp]"
     )
 
-    # Step 3: Burn ASS subtitles on top (captions stay crisp, on top of everything)
-    filters.append(
-        f"[comp]ass='{ass_path_escaped}'[vout]"
-    )
+    # Step 3: Audio Visualizer Overlay (Template or Custom Green-Screen Video)
+    comp_stream = "comp"
+    if visualizer_enabled and visualizer_position != "none":
+        if visualizer_mode == "video" and custom_vis_video_path:
+            # Custom Green-Screen Video Visualizer with Chroma Keying
+            from .visualizer_generator import get_visualizer_overlay_coords
+            vis_coords = get_visualizer_overlay_coords(
+                position=visualizer_position,
+                widget_w=target_vis_w,
+                widget_h=target_vis_h,
+                custom_x=visualizer_custom_x,
+                custom_y=visualizer_custom_y
+            )
+            # Choose colorkey (RGB Euclidean distance - exactly matches browser canvas sampler)
+            # This ensures white waveforms, glowing lines, and text are 100% preserved
+            # whereas YUV chromakey discards luminance (Y) and erases white bars.
+            hex_clean = chroma_key_color.lstrip("#").upper()
+            key_color_code = f"0x{hex_clean}" if len(hex_clean) == 6 else "0x00FF00"
+            key_filter = f"colorkey=color={key_color_code}:similarity={chroma_similarity:.3f}:blend={chroma_blend:.3f}"
+
+            filters.append(
+                f"[{card_input_idx}:v]setsar=1,fps=30,{key_filter},"
+                f"scale={target_vis_w}:{target_vis_h}:flags=fast_bilinear,"
+                f"format=rgba[custom_vis_keyed]"
+            )
+            filters.append(
+                f"[{comp_stream}][custom_vis_keyed]overlay={vis_coords}:eof_action=repeat[comp_vis]"
+            )
+            comp_stream = "comp_vis"
+        elif visualizer_card_path:
+            # Procedural Template Card with Dynamic Audio Visualizer
+            from .visualizer_generator import build_visualizer_filter_snippet
+            vis_snippet, comp_stream = build_visualizer_filter_snippet(
+                style_key=visualizer_style,
+                card_png_path=visualizer_card_path,
+                audio_stream_label="2:a",
+                input_card_index=card_input_idx,
+                total_duration_sec=audio_duration,
+                position=visualizer_position,
+                in_video_label="comp",
+                out_video_label="comp_vis",
+                custom_x=visualizer_custom_x,
+                custom_y=visualizer_custom_y,
+                scale=visualizer_scale
+            )
+            filters.append(vis_snippet)
+
+    # Step 4: Burn ASS subtitles on top with local fontsdir support
+    fonts_dir = FONTS_DIR if (FONTS_DIR and FONTS_DIR.exists()) else (Path(__file__).parent / "assets" / "fonts")
+    if fonts_dir.exists():
+        fonts_dir_escaped = _ffmpeg_path(str(fonts_dir))
+        filters.append(
+            f"[{comp_stream}]ass=filename='{ass_path_escaped}':fontsdir='{fonts_dir_escaped}'[vout]"
+        )
+    else:
+        filters.append(
+            f"[{comp_stream}]ass=filename='{ass_path_escaped}'[vout]"
+        )
 
     return ";\n    ".join(filters)
 
@@ -141,22 +241,58 @@ def render_avatar_video(
     dark_tint: float = 0.25,
     speed_multiplier: float = 0.75,
     avatar_position: str = "right",
-    progress_callback=None
+    progress_callback=None,
+    visualizer_enabled: bool = True,
+    visualizer_style: str = "glass_pill_cyan",
+    visualizer_position: str = "top_center",
+    visualizer_title: str = "Stoic Wisdom",
+    visualizer_subtitle: str = "Audio Story Series",
+    avatar_opacity: float = 1.0,
+    avatar_custom_x: Optional[int] = None,
+    avatar_custom_y: Optional[int] = None,
+    visualizer_custom_x: Optional[int] = None,
+    visualizer_custom_y: Optional[int] = None,
+    visualizer_scale: float = 1.0,
+    visualizer_mode: str = "template",
+    custom_vis_video_path: Optional[str] = None,
+    chroma_key_color: str = "#00FF00",
+    chroma_similarity: float = 0.25,
+    chroma_blend: float = 0.08,
+    visualizer_width: Optional[int] = None,
+    visualizer_height: Optional[int] = None
 ) -> str:
     """
     Single-pass GPU-accelerated render of the complete avatar storyteller video.
 
     Args:
-        voiceover_path:    Path to processed voiceover MP3/WAV.
-        clips:             List of clip dicts from select_local_clips() with 'path'.
-        avatar_path:       Path to processed avatar PNG (with stroke, pre-resized).
-        ass_subtitle_path: Path to .ass subtitle file.
-        output_path:       Output video path. Auto-generated if None.
-        blur_radius:       Background blur strength (0 = no blur, 30 = heavy).
-        dark_tint:         Background darkness (0.0 = original, 0.8 = 80% dimmed).
-        speed_multiplier:  Stock footage speed (0.5 = half speed, 1.0 = normal).
-        avatar_position:   'left', 'right', or 'center'.
-        progress_callback: Optional function(dict) for progress updates.
+        voiceover_path:      Path to processed voiceover MP3/WAV.
+        clips:               List of clip dicts from select_local_clips() with 'path'.
+        avatar_path:         Path to processed avatar PNG (with stroke, pre-resized).
+        ass_subtitle_path:   Path to .ass subtitle file.
+        output_path:         Output video path. Auto-generated if None.
+        blur_radius:         Background blur strength (0 = no blur, 30 = heavy).
+        dark_tint:           Background darkness (0.0 = original, 0.8 = 80% dimmed).
+        speed_multiplier:    Stock footage speed (0.5 = half speed, 1.0 = normal).
+        avatar_position:     'left', 'right', or 'center'.
+        progress_callback:   Optional function(dict) for progress updates.
+        visualizer_enabled:  Whether to overlay audio player / visualizer motion graphics.
+        visualizer_style:    Preset key (1 of 10 styles).
+        visualizer_position: 'top_center', 'top_left', 'top_right', 'bottom_center', or 'none'.
+        visualizer_title:    Display title on podcast/minimal cards.
+        visualizer_subtitle: Display subtitle on podcast/minimal cards.
+        avatar_opacity:      Avatar layer opacity (0.1 to 1.0, default 1.0 = solid).
+        avatar_custom_x:     Optional custom X px coordinate on 1920x1080 canvas.
+        avatar_custom_y:     Optional custom Y px coordinate on 1920x1080 canvas.
+        visualizer_custom_x: Optional custom X px coordinate for audio player card.
+        visualizer_custom_y: Optional custom Y px coordinate for audio player card.
+        visualizer_scale:    Scaling factor for audio player card (default 1.0).
+        visualizer_mode:     'template' or 'video' (custom green-screen video).
+        custom_vis_video_path: Path to user's uploaded green-screen visualizer video.
+        chroma_key_color:    Hex color to key out (e.g. '#00FF00' or '#000000').
+        chroma_similarity:   Tolerance slider (0.05 to 0.50, default 0.25).
+        chroma_blend:        Smoothness/blend slider (0.0 to 0.25, default 0.08).
+        visualizer_width:    Optional custom width on 1920x1080 canvas.
+        visualizer_height:   Optional custom height on 1920x1080 canvas.
 
     Returns:
         Path to the rendered output video.
@@ -175,14 +311,58 @@ def render_avatar_video(
         output_path = str(OUTPUT_DIR / f"avatar_story_{ts}.mp4")
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    # Write concat list for B-Roll clips
+    # Write concat list for clean, normalized B-Roll clips (guarantees no freezing across mixed files)
+    from .local_pool import prepare_clean_concat_clips, write_concat_list
+    clean_clip_paths = prepare_clean_concat_clips(clips, str(TEMP_DIR))
     concat_list_path = str(TEMP_DIR / "concat_list.txt")
-    write_concat_list(clips, concat_list_path)
-    print(f"[Renderer] Concat list written: {concat_list_path} ({len(clips)} clips)")
+    write_concat_list(clean_clip_paths, concat_list_path)
+    print(f"[Renderer] Clean concat list written: {concat_list_path} ({len(clean_clip_paths)} clips)")
 
     # Get avatar dimensions from the PNG file
     avatar_w, avatar_h = _get_image_dimensions(avatar_path)
-    print(f"[Renderer] Avatar dimensions: {avatar_w}×{avatar_h}px, position={avatar_position}")
+    print(f"[Renderer] Avatar dimensions: {avatar_w}×{avatar_h}px, position={avatar_position}, opacity={avatar_opacity}")
+
+    voiceover_duration = _get_file_duration(voiceover_path)
+
+    # Prepare visualizer overlay (Template or Custom Green-Screen Video)
+    visualizer_card_path = None
+    target_vis_w = 400
+    target_vis_h = 200
+    use_visualizer = bool(visualizer_enabled and visualizer_position != "none")
+
+    if use_visualizer:
+        if visualizer_mode == "video" and custom_vis_video_path and Path(custom_vis_video_path).exists():
+            from .local_pool import probe_clip_info
+            vis_info = probe_clip_info(custom_vis_video_path)
+            orig_w = vis_info.get("width", 640)
+            orig_h = vis_info.get("height", 360)
+            if visualizer_width and visualizer_height:
+                target_vis_w = max(64, min(1920, int(round(float(visualizer_width)))))
+                target_vis_h = max(36, min(1080, int(round(float(visualizer_height)))))
+            else:
+                base_w = 640 if orig_w >= 960 else orig_w
+                base_h = int(round(base_w * (orig_h / max(1, orig_w))))
+                target_vis_w = max(64, min(1920, int(round(float(base_w) * float(visualizer_scale)))))
+                target_vis_h = max(36, min(1080, int(round(float(base_h) * float(visualizer_scale)))))
+            # FFmpeg encoders require even dimensions
+            target_vis_w = target_vis_w if target_vis_w % 2 == 0 else target_vis_w + 1
+            target_vis_h = target_vis_h if target_vis_h % 2 == 0 else target_vis_h + 1
+            print(f"[Renderer] 🟢 Custom Video Visualizer ready: {custom_vis_video_path} ({target_vis_w}×{target_vis_h}px, scale={visualizer_scale})")
+        else:
+            try:
+                from .visualizer_generator import generate_player_card_image
+                visualizer_card_path = generate_player_card_image(
+                    style_key=visualizer_style,
+                    title=visualizer_title or "Stoic Wisdom",
+                    subtitle=visualizer_subtitle or "Audio Story Series",
+                    avatar_image_path=avatar_path,
+                    output_dir=str(TEMP_DIR),
+                    total_duration_sec=voiceover_duration
+                )
+                print(f"[Renderer] 🎵 Visualizer card ready: {visualizer_card_path} (Style: {visualizer_style})")
+            except Exception as e:
+                print(f"[Renderer] ⚠️ Visualizer card generation failed: {e}")
+                use_visualizer = False
 
     # Build the filter complex
     filter_complex = _build_filter_complex(
@@ -192,20 +372,51 @@ def render_avatar_video(
         avatar_position=avatar_position,
         avatar_width=avatar_w,
         avatar_height=avatar_h,
-        ass_subtitle_path=ass_subtitle_path
+        ass_subtitle_path=ass_subtitle_path,
+        visualizer_enabled=use_visualizer,
+        visualizer_style=visualizer_style,
+        visualizer_position=visualizer_position,
+        visualizer_card_path=visualizer_card_path,
+        audio_duration=voiceover_duration,
+        card_input_idx=3,
+        avatar_opacity=avatar_opacity,
+        avatar_custom_x=avatar_custom_x,
+        avatar_custom_y=avatar_custom_y,
+        visualizer_custom_x=visualizer_custom_x,
+        visualizer_custom_y=visualizer_custom_y,
+        visualizer_scale=visualizer_scale,
+        visualizer_mode=visualizer_mode,
+        custom_vis_video_path=custom_vis_video_path,
+        chroma_key_color=chroma_key_color,
+        chroma_similarity=chroma_similarity,
+        chroma_blend=chroma_blend,
+        target_vis_w=target_vis_w,
+        target_vis_h=target_vis_h
     )
     print(f"[Renderer] Filter complex:\n    {filter_complex}")
 
-    # Build FFmpeg command
+    # Build FFmpeg command inputs
+    cmd_inputs = [
+        # Input 0: B-Roll via concat demuxer with auto timestamp generation to fix non-monotonic clip origins
+        "-fflags", "+genpts",
+        "-f", "concat", "-safe", "0", "-i", concat_list_path,
+        # Input 1: Avatar PNG (static image; repeated by overlay eof_action=repeat without RAM leak)
+        "-i", avatar_path,
+        # Input 2: Voiceover audio
+        "-i", voiceover_path,
+    ]
+    # Input 3: Visualizer card PNG OR Looped Custom Green-Screen Video
+    if use_visualizer:
+        if visualizer_mode == "video" and custom_vis_video_path and Path(custom_vis_video_path).exists():
+            cmd_inputs.extend(["-stream_loop", "-1", "-i", custom_vis_video_path])
+        elif visualizer_card_path:
+            cmd_inputs.extend(["-i", visualizer_card_path])
+
+    # Build complete FFmpeg command
     cmd = [
         ffmpeg, "-y",
         "-threads", "0",
-        # Input 0: B-Roll via concat demuxer (handles slow-mo via setpts in filtergraph)
-        "-f", "concat", "-safe", "0", "-i", concat_list_path,
-        # Input 1: Avatar PNG (loop forever; duration controlled by shortest audio)
-        "-loop", "1", "-i", avatar_path,
-        # Input 2: Voiceover audio
-        "-i", voiceover_path,
+        *cmd_inputs,
         # Filter graph
         "-filter_complex", filter_complex,
         # Map outputs
@@ -220,7 +431,8 @@ def render_avatar_video(
         "-c:a", "aac", "-b:a", "192k",
         # Duration: stop when voiceover ends
         "-shortest",
-        # FPS
+        # Aspect Ratio & FPS
+        "-aspect", "16:9",
         "-r", str(settings.get("fps", 30)),
         output_path
     ]
@@ -230,7 +442,7 @@ def render_avatar_video(
     print(f"[Renderer] Command: {' '.join(cmd[:10])} ... [truncated]")
 
     if progress_callback:
-        progress_callback({"status": "rendering", "message": "Single-pass GPU render started...", "percent": 5})
+        progress_callback({"status": "rendering", "message": "Single-pass GPU render started...", "percent": 73})
 
     start_time = time.time()
 

@@ -7,6 +7,7 @@ import uuid
 import asyncio
 import json
 import shutil
+import subprocess
 import traceback
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -38,9 +39,13 @@ def _update_job(job_id: str, data: dict):
         _jobs[job_id].update(data)
 
 
-# ── Static Frontend ────────────────────────────────────────────────────────────
+# ── Static Frontend & Media Mounts ────────────────────────────────────────────
 if FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+if AVATARS_DIR.exists():
+    app.mount("/avatars", StaticFiles(directory=str(AVATARS_DIR)), name="avatars")
+if TEMP_DIR.exists():
+    app.mount("/temp", StaticFiles(directory=str(TEMP_DIR)), name="temp")
 
 
 @app.get("/")
@@ -79,7 +84,66 @@ async def gpu_info():
         return {"encoder": "libx264", "error": str(e)}
 
 
-# ── B-Roll Folder Scan ─────────────────────────────────────────────────────────
+# ── Visualizer Presets ────────────────────────────────────────────────────────
+@app.get("/api/visualizer-presets")
+async def get_visualizer_presets():
+    try:
+        from .visualizer_generator import VISUALIZER_PRESETS
+        return {"success": True, "presets": list(VISUALIZER_PRESETS.values())}
+    except Exception as e:
+        return {"success": False, "error": str(e), "presets": []}
+
+
+# ── B-Roll Folder Scan & Browse ────────────────────────────────────────────────
+def _show_native_folder_dialog(initial_dir: str = "") -> str:
+    """Opens a native Windows folder browser dialog."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.wm_attributes("-topmost", 1)
+        folder = filedialog.askdirectory(
+            title="Select B-Roll Video Folder",
+            initialdir=initial_dir or str(Path.home())
+        )
+        root.destroy()
+        if folder:
+            return folder
+    except Exception:
+        pass
+
+    try:
+        ps_script = (
+            "Add-Type -AssemblyName System.Windows.Forms; "
+            "$f = New-Object System.Windows.Forms.FolderBrowserDialog; "
+            "$f.Description = 'Select B-Roll Video Folder'; "
+            "$f.ShowNewFolderButton = $false; "
+            "if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { "
+            "  Write-Output $f.SelectedPath "
+            "}"
+        )
+        res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], capture_output=True, text=True, timeout=30)
+        return res.stdout.strip()
+    except Exception as e:
+        print(f"[Server] Folder dialog error: {e}")
+        return ""
+
+
+@app.post("/api/browse-folder")
+async def browse_folder():
+    """Triggers native Windows folder picker dialog and returns stats asynchronously."""
+    folder = await asyncio.to_thread(_show_native_folder_dialog)
+    if not folder:
+        return {"success": False, "cancelled": True}
+    try:
+        from .local_pool import get_folder_stats
+        stats = await asyncio.to_thread(get_folder_stats, folder)
+        return {"success": True, "folder_path": folder, "stats": stats}
+    except Exception as e:
+        return {"success": True, "folder_path": folder, "error": str(e)}
+
+
 @app.post("/api/scan-folder")
 async def scan_folder(body: dict):
     folder = body.get("folder_path", "").strip()
@@ -87,7 +151,7 @@ async def scan_folder(body: dict):
         raise HTTPException(400, "folder_path is required")
     try:
         from .local_pool import get_folder_stats
-        stats = get_folder_stats(folder)
+        stats = await asyncio.to_thread(get_folder_stats, folder)
         return stats
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -97,15 +161,21 @@ async def scan_folder(body: dict):
 @app.post("/api/upload-avatar")
 async def upload_avatar(file: UploadFile = File(...)):
     try:
-        ext     = Path(file.filename).suffix.lower() or ".png"
-        dest    = AVATARS_DIR / f"avatar_{uuid.uuid4().hex[:8]}{ext}"
-        with open(str(dest), "wb") as f:
-            shutil.copyfileobj(file.file, f)
+        ext  = Path(file.filename).suffix.lower() or ".png"
+        dest = AVATARS_DIR / f"avatar_{uuid.uuid4().hex[:8]}{ext}"
+
+        def _save():
+            with open(str(dest), "wb") as f:
+                shutil.copyfileobj(file.file, f)
+            return dest.stat().st_size
+
+        size = await asyncio.to_thread(_save)
         return {
-            "success":   True,
-            "path":      str(dest),
-            "filename":  dest.name,
-            "size_bytes": dest.stat().st_size
+            "success":    True,
+            "path":       str(dest),
+            "url":        f"/avatars/{dest.name}",
+            "filename":   dest.name,
+            "size_bytes": size
         }
     except Exception as e:
         raise HTTPException(500, f"Avatar upload failed: {e}")
@@ -117,45 +187,155 @@ async def upload_audio(file: UploadFile = File(...)):
     try:
         ext  = Path(file.filename).suffix.lower() or ".mp3"
         dest = TEMP_DIR / f"voiceover_{uuid.uuid4().hex[:8]}{ext}"
-        with open(str(dest), "wb") as f:
-            shutil.copyfileobj(file.file, f)
 
-        # Get duration
-        from .transcriber import get_audio_duration
-        duration = get_audio_duration(str(dest))
+        def _save_and_probe():
+            with open(str(dest), "wb") as f:
+                shutil.copyfileobj(file.file, f)
+            from .transcriber import get_audio_duration
+            return get_audio_duration(str(dest))
+
+        duration = await asyncio.to_thread(_save_and_probe)
 
         return {
-            "success":  True,
-            "path":     str(dest),
-            "filename": dest.name,
-            "duration": round(duration, 2),
+            "success":      True,
+            "path":         str(dest),
+            "url":          f"/temp/{dest.name}",
+            "filename":     dest.name,
+            "duration":     round(duration, 2),
             "duration_min": round(duration / 60, 2),
         }
     except Exception as e:
         raise HTTPException(500, f"Audio upload failed: {e}")
 
 
+# ── Background Music / Ambience Upload ─────────────────────────────────────────
+@app.post("/api/upload-bgm")
+async def upload_bgm(file: UploadFile = File(...)):
+    """Uploads an optional background music/ambience audio file asynchronously."""
+    try:
+        ext  = Path(file.filename).suffix.lower() or ".mp3"
+        dest = TEMP_DIR / f"bgm_{uuid.uuid4().hex[:8]}{ext}"
+
+        def _save_and_probe():
+            with open(str(dest), "wb") as f:
+                shutil.copyfileobj(file.file, f)
+            from .transcriber import get_audio_duration
+            return get_audio_duration(str(dest))
+
+        duration = await asyncio.to_thread(_save_and_probe)
+
+        return {
+            "success":      True,
+            "path":         str(dest),
+            "url":          f"/temp/{dest.name}",
+            "filename":     dest.name,
+            "duration":     round(duration, 2),
+            "duration_min": round(duration / 60, 2),
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Background music upload failed: {e}")
+
+
+# ── Custom Visualizer Green-Screen Video Upload ───────────────────────────────
+@app.post("/api/upload-vis-video")
+async def upload_vis_video(file: UploadFile = File(...)):
+    """Uploads a user-supplied green-screen visualizer / soundwave animation video."""
+    try:
+        ext  = Path(file.filename).suffix.lower() or ".mp4"
+        dest = TEMP_DIR / f"vis_video_{uuid.uuid4().hex[:8]}{ext}"
+
+        def _save_and_probe():
+            with open(str(dest), "wb") as f:
+                shutil.copyfileobj(file.file, f)
+            from .local_pool import probe_clip_info
+            return probe_clip_info(str(dest))
+
+        info = await asyncio.to_thread(_save_and_probe)
+
+        return {
+            "success":    True,
+            "path":       str(dest),
+            "url":        f"/temp/{dest.name}",
+            "filename":   dest.name,
+            "duration":   round(info.get("duration", 0), 2),
+            "width":      info.get("width", 640),
+            "height":     info.get("height", 360),
+            "size_bytes": dest.stat().st_size
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Visualizer video upload failed: {e}")
+
+
+# ── Extract Sample B-Roll Frame for Live Studio Canvas ─────────────────────────
+@app.post("/api/sample-broll-frame")
+async def sample_broll_frame(body: dict):
+    """
+    Extracts a 1080p preview frame from the first clip in the given B-Roll folder.
+    Executed in a background worker thread to prevent event loop stutter.
+    """
+    import time
+    folder = body.get("folder_path", "").strip()
+    if not folder or not Path(folder).exists():
+        return {"success": False, "error": "Folder not found"}
+
+    def _extract():
+        from .local_pool import scan_folder
+        from .config import find_ffmpeg
+        clips = scan_folder(folder)
+        if not clips:
+            return {"success": False, "error": "No clips found in folder"}
+        first_clip = clips[0]
+        out_frame = TEMP_DIR / "broll_preview_frame.jpg"
+        ffmpeg = find_ffmpeg()
+        cmd = [
+            ffmpeg, "-y",
+            "-ss", "00:00:01",
+            "-i", first_clip,
+            "-vframes", "1",
+            "-q:v", "2",
+            str(out_frame)
+        ]
+        subprocess.run(cmd, capture_output=True, timeout=10)
+        if out_frame.exists():
+            return {"success": True, "url": f"/temp/broll_preview_frame.jpg?t={int(time.time())}"}
+        return {"success": False, "error": "Could not extract frame"}
+
+    try:
+        res = await asyncio.to_thread(_extract)
+        return res
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 # ── Preview Clip Selection ─────────────────────────────────────────────────────
 @app.post("/api/preview-clips")
 async def preview_clips(body: dict):
     """
-    Returns clip selection plan without actually running ffprobe on all clips.
-    Uses folder stats + estimates for fast UI feedback.
+    Returns clip selection plan without probing all durations.
+    Runs asynchronously in thread pool.
     """
     folder         = body.get("folder_path", "").strip()
     audio_duration = float(body.get("audio_duration", 120))
     speed          = float(body.get("stock_speed", 0.75))
+    pacing_mode    = body.get("pacing_mode", "full")
+    min_clip_sec   = float(body.get("min_clip_sec", 5.0))
+    max_clip_sec   = float(body.get("max_clip_sec", 9.0))
 
     if not folder:
         raise HTTPException(400, "folder_path required")
 
-    try:
-        from .local_pool import get_folder_stats, scan_folder
+    def _calc():
+        from .local_pool import get_folder_stats
         stats = get_folder_stats(folder)
         if not stats.get("success"):
             return stats
 
-        avg_raw_dur     = stats.get("estimated_avg_duration_sec", 45.0)
+        is_fast_cuts = (str(pacing_mode).lower() in ("fast_cuts", "dynamic", "fair_use"))
+        if is_fast_cuts:
+            avg_raw_dur = max(2.0, (min_clip_sec + max_clip_sec) / 2.0)
+        else:
+            avg_raw_dur = stats.get("estimated_avg_duration_sec", 45.0)
+
         avg_eff_dur     = avg_raw_dur / max(0.1, speed)
         clips_needed    = max(1, int(audio_duration / avg_eff_dur) + 1)
 
@@ -165,9 +345,14 @@ async def preview_clips(body: dict):
             "clips_needed":       clips_needed,
             "audio_duration":     audio_duration,
             "stock_speed":        speed,
+            "pacing_mode":        "fast_cuts" if is_fast_cuts else "full",
             "estimated_avg_clip": round(avg_eff_dur, 1),
             "will_wrap_pool":     clips_needed > stats["clip_count"],
         }
+
+    try:
+        res = await asyncio.to_thread(_calc)
+        return res
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -228,16 +413,45 @@ def _run_render_pipeline_sync(job_id: str, params: dict):
         if not avatar_path or not Path(avatar_path).exists():
             raise ValueError("Avatar image not found.")
 
-        avatar_position = params.get("avatar_position", "right")
-        stroke_color    = params.get("stroke_color",   "white")
-        stroke_width    = int(params.get("stroke_width",    10))
-        blur_radius     = int(params.get("blur_radius",     12))
-        dark_tint       = float(params.get("dark_tint",     0.25))
-        stock_speed     = float(params.get("stock_speed",   0.75))
-        pitch_semitones = float(params.get("pitch_semitones", 0.0))
-        voice_speed     = float(params.get("voice_speed",    1.0))
-        caption_preset  = params.get("caption_preset", "capcut_yellow")
-        niche           = params.get("niche", "Stoicism & Philosophy")
+        avatar_position  = params.get("avatar_position", "right")
+        avatar_size      = int(params.get("avatar_size", 920))
+        flip_horizontal  = bool(params.get("flip_horizontal", False))
+        stroke_color     = params.get("stroke_color",   "white")
+        stroke_width     = int(params.get("stroke_width",    10))
+        blur_radius      = int(params.get("blur_radius",     0))   # Default 0 (Crystal clear / Off)
+        dark_tint        = float(params.get("dark_tint",     0.25))
+        stock_speed      = float(params.get("stock_speed",   0.75))
+        pitch_semitones  = float(params.get("pitch_semitones", 0.0))
+        voice_speed      = float(params.get("voice_speed",    1.0))
+        caption_preset   = params.get("caption_preset", "capcut_yellow")
+        caption_position = params.get("caption_position", "center")  # Default: Dead Center
+        caption_size     = params.get("caption_size", "large")       # Default: Large 68pt
+        niche            = params.get("niche", "Stoicism & Philosophy")
+        visualizer_enabled  = bool(params.get("visualizer_enabled", True))
+        visualizer_style    = str(params.get("visualizer_style", "glass_pill_cyan"))
+        visualizer_position = str(params.get("visualizer_position", "top_center"))
+        visualizer_title    = str(params.get("visualizer_title", "")).strip() or niche
+        visualizer_subtitle = str(params.get("visualizer_subtitle", "Audio Story Series")).strip()
+
+        # Custom coordinates & scaling from Studio Canvas Stage
+        avatar_opacity      = float(params.get("avatar_opacity", 1.0))
+        avatar_custom_x     = params.get("avatar_custom_x")
+        avatar_custom_y     = params.get("avatar_custom_y")
+        caption_box         = params.get("caption_box")
+        visualizer_custom_x = params.get("visualizer_custom_x")
+        visualizer_custom_y = params.get("visualizer_custom_y")
+        visualizer_scale    = float(params.get("visualizer_scale", 1.0))
+
+        # Custom Green-Screen Video Visualizer Settings
+        custom_vis_video_path = params.get("custom_vis_video_path")
+        visualizer_mode       = str(params.get("visualizer_mode", "template"))
+        if custom_vis_video_path and Path(custom_vis_video_path).exists():
+            visualizer_mode = "video"
+        chroma_key_color      = str(params.get("chroma_key_color", "#00FF00"))
+        chroma_similarity     = float(params.get("chroma_similarity", 0.25))
+        chroma_blend          = float(params.get("chroma_blend", 0.08))
+        visualizer_width      = params.get("visualizer_width")
+        visualizer_height     = params.get("visualizer_height")
 
         # ─ Step 1: Audio DSP ─────────────────────────────────────────────────
         _update_job(job_id, {"percent": 8, "message": "Processing voiceover audio (pitch/speed DSP)..."})
@@ -262,25 +476,33 @@ def _run_render_pipeline_sync(job_id: str, params: dict):
         # ─ Step 2: Select B-Roll Clips ────────────────────────────────────────
         _update_job(job_id, {"percent": 20, "message": "Scanning B-Roll folder and selecting clips..."})
         from .local_pool import select_local_clips
+        broll_pacing_mode = params.get("broll_pacing_mode", "full")
+        broll_min_sec     = float(params.get("broll_min_sec", 5.0))
+        broll_max_sec     = float(params.get("broll_max_sec", 9.0))
         pool_result = select_local_clips(
             folder_path=broll_folder,
             target_duration_sec=audio_duration,
-            speed_multiplier=stock_speed
+            speed_multiplier=stock_speed,
+            pacing_mode=broll_pacing_mode,
+            min_clip_sec=broll_min_sec,
+            max_clip_sec=broll_max_sec
         )
         clips = pool_result["clips"]
         _update_job(job_id, {
             "percent": 35,
-            "message": f"Selected {len(clips)} clips ({pool_result['total_effective']:.0f}s effective duration)"
+            "message": f"Selected {len(clips)} clips ({pool_result['total_effective']:.0f}s effective duration, pacing: {pool_result.get('pacing_mode', 'full')})"
         })
 
         # ─ Step 3: Process Avatar ─────────────────────────────────────────────
-        _update_job(job_id, {"percent": 40, "message": "Processing avatar image (stroke + resize)..."})
+        _update_job(job_id, {"percent": 40, "message": "Processing avatar image (stroke + flip + resize)..."})
         from .avatar_processor import process_avatar
         avatar_result = process_avatar(
             input_image_path=avatar_path,
             stroke_color=stroke_color,
             stroke_width=stroke_width,
-            output_dir=str(TEMP_DIR / job_id)
+            target_height=avatar_size,
+            output_dir=str(TEMP_DIR / job_id),
+            flip_horizontal=flip_horizontal
         )
         processed_avatar_path = avatar_result["path"]
         _update_job(job_id, {"percent": 48, "message": f"Avatar ready: {avatar_result['width']}×{avatar_result['height']}px"})
@@ -294,13 +516,41 @@ def _run_render_pipeline_sync(job_id: str, params: dict):
 
         # ─ Step 5: Generate Adaptive Subtitles ───────────────────────────────
         ass_path = str(TEMP_DIR / f"{job_id}_subs.ass")
-        from .adaptive_subtitles import generate_adaptive_subtitles
-        generate_adaptive_subtitles(
-            scenes=scenes,
-            output_path=ass_path,
-            avatar_position=avatar_position,
-            preset_key=caption_preset
-        )
+        try:
+            from .adaptive_subtitles import generate_adaptive_subtitles
+            generate_adaptive_subtitles(
+                scenes=scenes,
+                output_path=ass_path,
+                avatar_position=avatar_position,
+                preset_key=caption_preset,
+                caption_position=caption_position,
+                caption_size=caption_size,
+                caption_box=caption_box
+            )
+        except Exception as sub_err:
+            print(f"[Server] ⚠️ Subtitle generation failed: {sub_err} — continuing without subtitles")
+            # Write an empty ASS file so FFmpeg doesn't error on the subtitle filter
+            with open(ass_path, "w", encoding="utf-8") as _f:
+                _f.write("[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+        # Mix background music if provided
+        bg_audio_path   = params.get("bg_audio_path")
+        bg_music_volume = float(params.get("bg_music_volume", 0.07))
+        final_render_audio = processed_audio
+        if bg_audio_path and Path(bg_audio_path).exists():
+            _update_job(job_id, {"percent": 70, "message": f"Blending background ambience ({bg_music_volume*100:.0f}% volume)..."})
+            try:
+                from .audio_dsp import mix_voiceover_and_bgm
+                mixed_audio = str(TEMP_DIR / f"{job_id}_voice_bgm.mp3")
+                final_render_audio = mix_voiceover_and_bgm(
+                    voiceover_path=processed_audio,
+                    bgm_path=bg_audio_path,
+                    output_path=mixed_audio,
+                    bgm_volume=bg_music_volume
+                )
+            except Exception as bgm_err:
+                print(f"[Server] ⚠️ BGM mix failed: {bgm_err} — proceeding with pure voiceover")
+                final_render_audio = processed_audio
+
         _update_job(job_id, {"percent": 72, "message": "Subtitles generated. Starting GPU render..."})
 
         # ─ Step 6: Single-Pass GPU Render ────────────────────────────────────
@@ -317,7 +567,7 @@ def _run_render_pipeline_sync(job_id: str, params: dict):
             })
 
         render_avatar_video(
-            voiceover_path=processed_audio,
+            voiceover_path=final_render_audio,
             clips=clips,
             avatar_path=processed_avatar_path,
             ass_subtitle_path=ass_path,
@@ -326,7 +576,25 @@ def _run_render_pipeline_sync(job_id: str, params: dict):
             dark_tint=dark_tint,
             speed_multiplier=stock_speed,
             avatar_position=avatar_position,
-            progress_callback=on_progress
+            progress_callback=on_progress,
+            visualizer_enabled=visualizer_enabled,
+            visualizer_style=visualizer_style,
+            visualizer_position=visualizer_position,
+            visualizer_title=visualizer_title,
+            visualizer_subtitle=visualizer_subtitle,
+            avatar_opacity=avatar_opacity,
+            avatar_custom_x=avatar_custom_x,
+            avatar_custom_y=avatar_custom_y,
+            visualizer_custom_x=visualizer_custom_x,
+            visualizer_custom_y=visualizer_custom_y,
+            visualizer_scale=visualizer_scale,
+            visualizer_mode=visualizer_mode,
+            custom_vis_video_path=custom_vis_video_path,
+            chroma_key_color=chroma_key_color,
+            chroma_similarity=chroma_similarity,
+            chroma_blend=chroma_blend,
+            visualizer_width=visualizer_width,
+            visualizer_height=visualizer_height
         )
 
         # ─ Done ───────────────────────────────────────────────────────────────
@@ -340,6 +608,14 @@ def _run_render_pipeline_sync(job_id: str, params: dict):
             "clips_used": len(clips),
             "duration":   round(audio_duration, 1),
         })
+
+        # Auto-open output folder and highlight output video in Windows Explorer
+        try:
+            if os.name == "nt" and Path(output_path).exists():
+                subprocess.Popen(f'explorer /select,"{output_path}"')
+                print(f"[Server] 📂 Auto-opened explorer with output file highlighted")
+        except Exception as ex:
+            print(f"[Server] Auto-open folder warning: {ex}")
 
     except Exception as e:
         tb = traceback.format_exc()

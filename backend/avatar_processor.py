@@ -32,8 +32,9 @@ STROKE_COLOR_PRESETS = {
 }
 
 # Standard avatar dimensions (height on 1080p canvas)
-AVATAR_HEIGHT_PX = 860    # Roughly 80% of 1080p canvas height
-AVATAR_WIDTH_PX  = 480    # Portrait width for left/right placement
+# Default height is 920px (anchored to bottom edge), with generous max_width so wide/pointing avatars stay large
+AVATAR_HEIGHT_PX = 920    # ~85% of 1080p canvas height, anchored to bottom
+AVATAR_WIDTH_PX  = 1100   # Wide enough so pointing/horizontal gestures don't artificially shrink avatar height
 
 
 def _load_image_as_rgba(image_path: str) -> "Image.Image":
@@ -66,10 +67,12 @@ def add_avatar_stroke(
     input_image_path: str,
     stroke_color: str | Tuple[int, int, int, int] = "white",
     stroke_width: int = 10,
-    output_path: Optional[str] = None
+    output_path: Optional[str] = None,
+    flip_horizontal: bool = False
 ) -> str:
     """
     Adds a crisp outer stroke / glow border to a portrait PNG using alpha mask dilation.
+    Optionally mirrors the avatar horizontally (for pointing gestures / facing direction).
     
     The stroke is applied OUTSIDE the avatar silhouette so the original portrait
     pixels are never modified. Resulting image is saved as PNG (RGBA).
@@ -103,6 +106,11 @@ def add_avatar_stroke(
     # Load & normalize to RGBA
     img = _load_image_as_rgba(input_image_path)
     img = _make_avatar_transparent_bg(img)
+
+    # Apply horizontal flip / mirror if requested
+    if flip_horizontal:
+        img = ImageOps.mirror(img)
+        print("[AvatarProcessor] 🔄 Avatar horizontally mirrored (flip_horizontal=True)")
 
     if color_val is None:
         # No stroke requested — just convert to RGBA PNG
@@ -172,16 +180,16 @@ def resize_avatar_for_canvas(
     img = _load_image_as_rgba(image_path)
     ow, oh = img.size
 
-    # Scale to target height, maintain aspect ratio
+    # Scale to target height first, maintain aspect ratio
     scale = target_height / oh
     new_w = int(ow * scale)
     new_h = target_height
 
-    # Clamp width
+    # If width exceeds max_width after height-scale, re-scale from width constraint instead
     if new_w > max_width:
-        scale = max_width / new_w
+        scale = max_width / ow  # Scale from ORIGINAL width (not already-scaled)
         new_w = max_width
-        new_h = int(new_h * scale)
+        new_h = int(oh * scale)  # Apply to ORIGINAL height to avoid double-scaling
 
     img_resized = img.resize((new_w, new_h), Image.LANCZOS)
     img_resized.save(output_path, format="PNG")
@@ -195,26 +203,30 @@ def process_avatar(
     stroke_width: int = 10,
     target_height: int = AVATAR_HEIGHT_PX,
     max_width: int = AVATAR_WIDTH_PX,
-    output_dir: Optional[str] = None
+    output_dir: Optional[str] = None,
+    flip_horizontal: bool = False
 ) -> dict:
     """
     Full avatar processing pipeline:
-    1. Add outer stroke border.
-    2. Resize to fit 1080p canvas.
-    3. Return metadata (dimensions, path).
+    1. Optionally mirror horizontally (flip_horizontal).
+    2. Add outer stroke border.
+    3. Resize to fit 1080p canvas (25% width max, height up to 900px anchored to bottom).
+    4. Return metadata (dimensions, path).
     """
     inp = Path(input_image_path)
     out_dir = Path(output_dir) if output_dir else inp.parent
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    stroked_path = str(out_dir / f"{inp.stem}_stroked.png")
-    final_path   = str(out_dir / f"{inp.stem}_final.png")
+    flip_tag = "_flipped" if flip_horizontal else ""
+    stroked_path = str(out_dir / f"{inp.stem}{flip_tag}_stroked.png")
+    final_path   = str(out_dir / f"{inp.stem}{flip_tag}_final.png")
 
     add_avatar_stroke(
         input_image_path=input_image_path,
         stroke_color=stroke_color,
         stroke_width=stroke_width,
-        output_path=stroked_path
+        output_path=stroked_path,
+        flip_horizontal=flip_horizontal
     )
 
     resize_avatar_for_canvas(
@@ -231,11 +243,12 @@ def process_avatar(
         w, h = max_width, target_height
 
     return {
-        "path":         final_path,
-        "width":        w,
-        "height":       h,
-        "stroke_color": stroke_color,
-        "stroke_width": stroke_width,
+        "path":            final_path,
+        "width":           w,
+        "height":          h,
+        "stroke_color":    stroke_color,
+        "stroke_width":    stroke_width,
+        "flip_horizontal": flip_horizontal,
     }
 
 

@@ -25,6 +25,11 @@ OUTPUT_DIR       = DATA_DIR / "output"
 TEMP_DIR         = DATA_DIR / "temp"
 AVATARS_DIR      = DATA_DIR / "avatars"
 BIN_DIR          = BASE_DIR / "bin"
+FONTS_DIR        = BUNDLE_DIR / "backend" / "assets" / "fonts"
+if not FONTS_DIR.exists():
+    FONTS_DIR = BASE_DIR / "backend" / "assets" / "fonts"
+if not FONTS_DIR.exists():
+    FONTS_DIR = BASE_DIR / "assets" / "fonts"
 
 FRONTEND_DIR = BUNDLE_DIR / "frontend"
 if not FRONTEND_DIR.exists():
@@ -101,7 +106,8 @@ def load_settings() -> dict:
     merged["groq_api_keys"] = gr_keys
     merged["groq_api_key"]  = gr_keys[0] if gr_keys else ""
 
-    if not str(merged.get("output_dir", "")).strip():
+    out_dir_val = str(merged.get("output_dir", "")).strip()
+    if not out_dir_val or not Path(out_dir_val).exists():
         merged["output_dir"] = str(OUTPUT_DIR)
     return merged
 

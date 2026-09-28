@@ -37,3 +37,9 @@ api.txt
 .env
 data/settings.json
 
+# Build & Release Artifacts
+build/
+dist/
+scratch/
+*.zip
+
