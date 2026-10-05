@@ -243,22 +243,27 @@ def select_local_clips(
     }
 
 
-def prepare_clean_concat_clips(clips: List[Dict[str, Any]], work_dir: str) -> List[str]:
+def prepare_clean_concat_clips(
+    clips: List[Dict[str, Any]],
+    work_dir: str,
+    progress_callback=None
+) -> List[str]:
     """
-    Guarantees every clip fed to the FFmpeg concat demuxer has identical stream structure:
-    1. Pure video only (-an) so clips with audio don't cause demuxer stream-count mismatch crashes.
-    2. Supports Dynamic Fair-Use Slicing (-ss {offset} -t {slice_dur}) with frame-accurate re-encode.
-    3. If a clip is not standard 1080p landscape (e.g. 4K or 720p), normalizes it to 1920x1080@30fps.
-    4. If a clip is already 1920x1080 with no audio and not sliced, re-uses it directly (0 latency).
-    5. If a clip is 1920x1080 with audio and not sliced, strips audio in <0.15s via stream copy.
+    Guarantees every clip fed to the FFmpeg concat demuxer has identical stream structure.
+    Executes in parallel using ThreadPoolExecutor for 4x faster preparation.
+    Strictly preserves clip ordering so concat order matches clip selection.
     """
     from .config import find_ffmpeg
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     ffmpeg = find_ffmpeg()
     out_dir = Path(work_dir) / "clean_broll"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    cleaned_paths = []
-    for idx, c in enumerate(clips):
+    cleaned_paths = [None] * len(clips)
+    max_workers = min(4, max(1, os.cpu_count() or 4))
+    print(f"[LocalPool] ⚡ Preparing {len(clips)} B-Roll clips in parallel ({max_workers} worker threads)...")
+
+    def _worker(idx: int, c: Any) -> Tuple[int, str]:
         raw_p = c["path"] if isinstance(c, dict) else str(c)
         is_sliced = c.get("is_sliced", False) if isinstance(c, dict) else False
         start_offset = float(c.get("start_offset", 0.0)) if isinstance(c, dict) else 0.0
@@ -274,8 +279,7 @@ def prepare_clean_concat_clips(clips: List[Dict[str, Any]], work_dir: str) -> Li
             clean_file = out_dir / f"clean_{idx:03d}_{stem}_s{int(start_offset*10)}_d{int(slice_dur*10)}.mp4"
             clean_path = str(clean_file)
             if clean_file.exists() and clean_file.stat().st_size > 1000:
-                cleaned_paths.append(clean_path)
-                continue
+                return idx, clean_path
 
             cmd = [
                 ffmpeg, "-y",
@@ -289,23 +293,20 @@ def prepare_clean_concat_clips(clips: List[Dict[str, Any]], work_dir: str) -> Li
             ]
             try:
                 subprocess.run(cmd, capture_output=True, check=True, timeout=90)
-                cleaned_paths.append(clean_path)
-                continue
+                return idx, clean_path
             except Exception as e:
                 print(f"[LocalPool] Slicing error for {raw_p}: {e}, falling back to whole clip")
 
         # Case 1: Already clean 1080p video with NO audio — zero processing needed
         if w == 1920 and h == 1080 and not has_audio:
-            cleaned_paths.append(raw_p)
-            continue
+            return idx, raw_p
 
         clean_file = out_dir / f"clean_{idx:03d}_{stem}.mp4"
         clean_path = str(clean_file)
 
         # Reuse if already prepared in this job
         if clean_file.exists() and clean_file.stat().st_size > 1000:
-            cleaned_paths.append(clean_path)
-            continue
+            return idx, clean_path
 
         # Case 2: Already 1080p, but has audio track — strip audio in <0.15s via copy
         if w == 1920 and h == 1080 and has_audio:
@@ -319,8 +320,7 @@ def prepare_clean_concat_clips(clips: List[Dict[str, Any]], work_dir: str) -> Li
             ]
             try:
                 subprocess.run(cmd, capture_output=True, check=True, timeout=30)
-                cleaned_paths.append(clean_path)
-                continue
+                return idx, clean_path
             except Exception as e:
                 print(f"[LocalPool] Fast audio strip failed for {raw_p}: {e}, falling back to normalize")
 
@@ -335,12 +335,24 @@ def prepare_clean_concat_clips(clips: List[Dict[str, Any]], work_dir: str) -> Li
         ]
         try:
             subprocess.run(cmd, capture_output=True, check=True, timeout=90)
-            cleaned_paths.append(clean_path)
+            return idx, clean_path
         except Exception as e:
             print(f"[LocalPool] Normalization warning for {raw_p}: {e}")
-            cleaned_paths.append(raw_p)  # Fallback to original
+            return idx, raw_p
 
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures = [ex.submit(_worker, i, c) for i, c in enumerate(clips)]
+        done_cnt = 0
+        for f in as_completed(futures):
+            i, p = f.result()
+            cleaned_paths[i] = p
+            done_cnt += 1
+            if progress_callback:
+                progress_callback(f"Prepared B-Roll clip {done_cnt}/{len(clips)}...")
+
+    print(f"[LocalPool] ✅ All {len(cleaned_paths)} B-Roll clips ready in parallel!")
     return cleaned_paths
+
 
 
 def write_concat_list(clip_paths: List[str], output_path: str) -> str:

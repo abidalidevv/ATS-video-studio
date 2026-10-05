@@ -1374,6 +1374,7 @@ async function startRender() {
   const progressSec = document.getElementById('progress-section');
   progressSec.classList.add('visible');
   setProgress(2, 'Preparing render job...');
+  STATE.lastLogIndex = 0;
   appendLog('🚀 Render job submitted...\n');
 
   const payload = {
@@ -1466,7 +1467,15 @@ function handleJobUpdate(data) {
   const message = data.message || 'Processing...';
 
   setProgress(pct, message);
-  appendLog(`[${new Date().toLocaleTimeString()}] ${message}\n`);
+
+  // Stream new server diagnostic logs cleanly into the terminal without duplicates
+  if (Array.isArray(data.logs) && data.logs.length > (STATE.lastLogIndex || 0)) {
+    const newLogs = data.logs.slice(STATE.lastLogIndex || 0);
+    newLogs.forEach(l => appendLog(`[${new Date().toLocaleTimeString()}] ${l}\n`));
+    STATE.lastLogIndex = data.logs.length;
+  } else if (!data.logs) {
+    appendLog(`[${new Date().toLocaleTimeString()}] ${message}\n`);
+  }
 
   if (data.status === 'complete') {
     onRenderComplete(data);

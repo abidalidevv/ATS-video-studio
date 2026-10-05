@@ -313,7 +313,11 @@ def render_avatar_video(
 
     # Write concat list for clean, normalized B-Roll clips (guarantees no freezing across mixed files)
     from .local_pool import prepare_clean_concat_clips, write_concat_list
-    clean_clip_paths = prepare_clean_concat_clips(clips, str(TEMP_DIR))
+    def _on_clip_prep(msg: str):
+        if progress_callback:
+            progress_callback({"status": "running", "message": msg, "percent": 28})
+
+    clean_clip_paths = prepare_clean_concat_clips(clips, str(TEMP_DIR), progress_callback=_on_clip_prep)
     concat_list_path = str(TEMP_DIR / "concat_list.txt")
     write_concat_list(clean_clip_paths, concat_list_path)
     print(f"[Renderer] Clean concat list written: {concat_list_path} ({len(clean_clip_paths)} clips)")

@@ -36,6 +36,13 @@ _jobs: Dict[str, Dict[str, Any]] = {}
 
 def _update_job(job_id: str, data: dict):
     if job_id in _jobs:
+        if "message" in data and data["message"]:
+            msg = str(data["message"])
+            if "logs" not in _jobs[job_id]:
+                _jobs[job_id]["logs"] = []
+            if not _jobs[job_id]["logs"] or _jobs[job_id]["logs"][-1] != msg:
+                _jobs[job_id]["logs"].append(msg)
+                print(f"[{job_id[:6]}] {msg}")
         _jobs[job_id].update(data)
 
 

@@ -223,18 +223,18 @@ def detect_gpu_encoder(force_probe: bool = False) -> str:
 
 
 def get_encoder_params(encoder: str) -> dict:
-    """Returns optimal FFmpeg encoding parameters for the given encoder."""
+    """Returns optimal FFmpeg encoding parameters for maximum hardware throughput."""
     params = {
         "h264_nvenc": {
             "codec":   "h264_nvenc",
             "preset":  "p1",
-            "extras":  ["-tune", "ll", "-rc", "cbr", "-b:v", "8M", "-bufsize", "16M"],
+            "extras":  ["-tune", "ull", "-rc", "vbr", "-cq", "22", "-b:v", "0"],
             "pix_fmt": "yuv420p",
         },
         "h264_qsv": {
             "codec":   "h264_qsv",
             "preset":  "veryfast",
-            "extras":  ["-b:v", "8M"],
+            "extras":  ["-async_depth", "4", "-b:v", "8M"],
             "pix_fmt": "nv12",
         },
         "h264_amf": {
