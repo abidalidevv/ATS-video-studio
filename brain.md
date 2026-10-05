@@ -22,6 +22,9 @@ All architectural phases, UI controls, live studio previews, audio visualizers, 
 - [x] ~~**12. Chromium MIME File Picker Lag Elimination (`frontend/`)**: Replaced generic MIME wildcards (`audio/*`, `video/*`, `image/*`) with explicit extensions (`.mp3`, `.mp4`, `.png`) to eliminate Windows shell codec/thumbnail registry freeze; added zero-copy blob previews (`URL.createObjectURL`).~~
 - [x] ~~**13. Subtitle Zero-Overlap & Font Scaling Hardening (`backend/adaptive_subtitles.py` & `backend/subtitle_generator.py`)**: Strict inter-chunk boundary zero-overlap clamping (`next_start - 0.04s`) preventing LibASS vertical line stacking, and accurate font size / outline scaling.~~
 - [x] ~~**14. Comprehensive Documentation Manual (`documentation.html` & `frontend/docs.html`)**: Complete standalone interactive offline documentation page with 9 sections, copy-to-clipboard buttons, REST API reference, and typography preview.~~
+- [x] ~~**15. Startup System Health & Storage Cleaner Guard (`backend/server.py` & `frontend/`)**: Automated pre-flight check on launch verifying Groq AI Whisper API connectivity (`/api/system/health`), 1-click temporary cache purger (`/api/system/clean-cache`), and inline key updater (`/api/system/update-groq-key`).~~
+- [x] ~~**16. Native Windows Desktop Application Architecture (`desktop_launcher.py` & `ats_author.spec`)**: Runs as a true native Windows installable/portable desktop window using `pywebview` with Microsoft WebView2 host, keeping Direct3D GPU hardware acceleration 100% active (zero browser chrome, zero `--disable-gpu`).~~
+- [x] ~~**17. Smart Parallel Groq Audio Chunker for 2-Hour Narrations (`backend/transcriber.py`)**: Automated silence-aware splitting into ~22MB segments, parallel multi-key Whisper transcription, and chronological micro-timestamp reassembly.~~
 
 ---
 

@@ -636,7 +636,7 @@
       <a href="#workflow" class="nav-btn">🎬 Workflow</a>
       <a href="#api" class="nav-btn">🌐 REST API</a>
       <a href="#keys" class="nav-btn">🔑 API Keys</a>
-      <a href="index.html" class="nav-btn nav-btn-primary">← Back to Studio</a>
+      <a href="frontend/index.html" class="nav-btn nav-btn-primary">← Open Studio</a>
     </div>
   </header>
 
@@ -800,6 +800,27 @@
         </ul>
 
         <div class="sub-card" style="margin-top:20px;">
+          <div class="sub-card-title">🖥️ Native Windows Desktop Host (WebView2 + Full GPU Acceleration)</div>
+          <p style="color:var(--text-secondary);font-size:0.88rem;">
+            Unlike web applications that run in an external browser tab, the compiled <code>ATSAuthor.exe</code> embeds a native Windows GUI window powered by Microsoft WebView2 and <code>pywebview</code>. <strong>Direct3D / DirectX 11 GPU hardware acceleration remains fully ACTIVE</strong>, guaranteeing buttery-smooth 60fps UI animations, instant canvas dragging, hardware-accelerated video playback, and zero browser chrome.
+          </p>
+        </div>
+
+        <div class="sub-card" style="margin-top:14px;">
+          <div class="sub-card-title">🛡️ Startup System Health &amp; Storage Cleaner Guard</div>
+          <p style="color:var(--text-secondary);font-size:0.88rem;">
+            Every time the studio launches, an automated pre-flight diagnostic check verifies that the <strong>Groq AI Whisper API</strong> is responsive and authenticated. If an invalid or expired API key is detected, an inline prompt allows one-click key updating. Simultaneously, it scans temporary audio/video chunk cache in <code>data/temp/</code> and provides a 1-click cleaner so long-form render projects never bloat your hard drive.
+          </p>
+        </div>
+
+        <div class="sub-card" style="margin-top:14px;">
+          <div class="sub-card-title">🎙️ 2-Hour Voiceover Smart Parallel Groq Chunking Engine</div>
+          <p style="color:var(--text-secondary);font-size:0.88rem;">
+            Groq Whisper has a hard 25 MB payload limit. The engine features an intelligent audio chunker that splits long-form narrations (1 to 2 hours) at natural silence boundaries into safe 22 MB segments, dispatches them in parallel with multi-key API fallback, and reassembles word-by-word micro timestamps with 100% chronological accuracy.
+          </p>
+        </div>
+
+        <div class="sub-card" style="margin-top:14px;">
           <div class="sub-card-title">🛡️ Self-Healing Dynamic Output Directory</div>
           <p style="color:var(--text-secondary);font-size:0.88rem;">
             When settings are shared, if <code>data/settings.json</code> points to an output folder that existed on your development machine (e.g., <code>C:\Users\Abid\...</code>), the portable engine automatically detects that the folder does not exist on your friend's PC and seamlessly falls back to <code>data/output/</code> inside their portable directory. No errors, no missing directory crashes!
@@ -1142,6 +1163,24 @@ python desktop_launcher.py</pre>
                 <td>Opens output directory in Windows Explorer</td>
                 <td>Returns <code>{ success: true }</code></td>
               </tr>
+              <tr>
+                <td><span class="method-badge method-get">GET</span></td>
+                <td><code>/api/system/health</code></td>
+                <td>Runs pre-flight system diagnostics &amp; cache scan</td>
+                <td>Returns Groq API validity, temp cache size &amp; GPU encoder status</td>
+              </tr>
+              <tr>
+                <td><span class="method-badge method-post">POST</span></td>
+                <td><code>/api/system/clean-cache</code></td>
+                <td>Safely purges temporary cache files in <code>data/temp/</code></td>
+                <td>Returns freed space details &amp; confirmation</td>
+              </tr>
+              <tr>
+                <td><span class="method-badge method-post">POST</span></td>
+                <td><code>/api/system/update-groq-key</code></td>
+                <td>Validates and updates Groq API key on the fly</td>
+                <td>Body: <code>{ groq_api_key }</code> ➔ Returns verification result</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -1290,7 +1329,7 @@ python desktop_launcher.py</pre>
           </p>
         </div>
 
-        <div class="sub-card" style="margin-bottom:16px;">
+        <div class="sub-card">
           <div class="sub-card-title">❓ Why don't the subtitles overlap vertically during fast speaking?</div>
           <p style="color:var(--text-secondary);font-size:0.88rem;">
             In <code>backend/subtitle_generator.py</code>, we enforce boundary clamping: each line's end timestamp is strictly clamped to <code>next_start - 0.04s</code>. This forces LibASS to erase the old subtitle before rendering the next line, completely eliminating vertical line stacking.

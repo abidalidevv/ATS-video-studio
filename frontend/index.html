@@ -41,6 +41,9 @@
       <a href="/static/docs.html" target="_blank" class="btn btn-ghost" id="btn-docs" title="User Documentation & API Guide" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
         📖 Docs
       </a>
+      <button class="btn btn-ghost" onclick="openHealthGuardModal(true)" id="btn-health-guard" title="System Health & Storage Guard" style="display:inline-flex; align-items:center; gap:6px;">
+        🛡️ Health
+      </button>
       <button class="btn btn-ghost" onclick="openOutputsPanel()" id="btn-outputs" title="View rendered videos">
         📂 Outputs
       </button>
@@ -1224,6 +1227,102 @@
       </button>
       <div id="settings-msg" style="font-size:0.8rem;color:var(--accent-green);display:none;">✅ Settings saved!</div>
     </div>
+  </div>
+</div>
+
+<!-- ═══ Startup System Health & Storage Guard Modal ═══ -->
+<div class="outputs-panel" id="health-guard-modal" style="z-index: 9999;" onclick="closeHealthGuardModal(event)">
+  <div class="outputs-modal" onclick="event.stopPropagation()" style="max-width: 660px; border: 1px solid rgba(255,255,255,0.14); box-shadow: 0 24px 70px rgba(0,0,0,0.85); background: #0f1523;">
+    
+    <div style="display:flex; align-items:center; gap:14px; margin-bottom:18px; border-bottom:1px solid var(--border-subtle); padding-bottom:14px;">
+      <div style="width:44px; height:44px; border-radius:12px; background:linear-gradient(135deg, #6366f1, #a855f7); display:grid; place-items:center; font-size:24px; box-shadow: 0 4px 16px rgba(99,102,241,0.4);">🛡️</div>
+      <div style="flex:1;">
+        <h2 style="font-family:var(--font-display); font-size:1.25rem; font-weight:800; margin:0; color:#fff; letter-spacing:-0.01em;">Studio Health &amp; Storage Guard</h2>
+        <p style="font-size:0.8rem; color:var(--text-muted); margin:2px 0 0 0;">System Pre-Flight Check · Groq AI Whisper Verification &amp; Cache Cleaner</p>
+      </div>
+      <button class="btn btn-ghost" onclick="closeHealthGuardModal()" style="font-size:1rem; padding:6px 12px;" aria-label="Close">✕</button>
+    </div>
+
+    <!-- Health Checks List -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      
+      <!-- Check 1: Groq AI Whisper API Health -->
+      <div class="health-card" id="health-card-groq" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:14px; padding:16px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:1.4rem;">⚡</span>
+            <div>
+              <div style="font-weight:700; font-size:0.95rem; color:#fff;">Groq AI Whisper API</div>
+              <div style="font-size:0.75rem; color:var(--text-muted);" id="health-groq-subtitle">Required for auto-transcription &amp; kinetic subtitles</div>
+            </div>
+          </div>
+          <span id="health-groq-badge" style="font-size:0.75rem; padding:4px 12px; border-radius:20px; font-weight:600; background:rgba(255,255,255,0.08); color:var(--text-muted);">Checking...</span>
+        </div>
+
+        <div id="health-groq-msg" style="font-size:0.82rem; margin:8px 0; color:var(--text-muted); line-height:1.4;">
+          Verifying Groq API connection and authentication...
+        </div>
+
+        <!-- Inline Groq Key Editor (shown if invalid or missing) -->
+        <div id="health-groq-input-wrap" style="display:none; margin-top:12px; background:rgba(244,63,94,0.06); padding:12px; border-radius:10px; border:1px solid rgba(244,63,94,0.3);">
+          <label style="font-size:0.78rem; color:#fda4af; display:block; margin-bottom:6px; font-weight:600;">🔑 Enter your active Groq API Key to enable transcription:</label>
+          <div style="display:flex; gap:8px;">
+            <input type="password" id="health-groq-key-input" class="text-input" placeholder="gsk_..." style="flex:1; font-size:0.85rem;" autocomplete="off" />
+            <button type="button" class="btn btn-primary" onclick="submitHealthGroqKey()" id="btn-save-health-groq" style="white-space:nowrap; padding:6px 16px; font-size:0.8rem;">
+              💾 Save &amp; Connect
+            </button>
+          </div>
+          <div id="health-groq-save-feedback" style="font-size:0.72rem; color:var(--text-muted); margin-top:6px;">
+            Get a free Groq API key instantly at <a href="https://console.groq.com/keys" target="_blank" style="color:#38bdf8; text-decoration:underline;">console.groq.com/keys</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Check 2: Storage & Temporary Cache Inspection -->
+      <div class="health-card" id="health-card-cache" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); border-radius:14px; padding:16px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:1.4rem;">🧹</span>
+            <div>
+              <div style="font-weight:700; font-size:0.95rem; color:#fff;">Storage &amp; Temporary Media Cache</div>
+              <div style="font-size:0.75rem; color:var(--text-muted);">Cache files from prior video renders &amp; audio chunks</div>
+            </div>
+          </div>
+          <span id="health-cache-badge" style="font-size:0.75rem; padding:4px 12px; border-radius:20px; font-weight:600; background:rgba(255,255,255,0.08); color:var(--text-muted);">Scanning...</span>
+        </div>
+
+        <div id="health-cache-msg" style="font-size:0.82rem; margin:8px 0; color:var(--text-muted); line-height:1.4;">
+          Scanning temporary working directories...
+        </div>
+
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px; flex-wrap:wrap; gap:8px;">
+          <div style="font-size:0.75rem; color:var(--text-muted); max-width:400px;">
+            Clearing temp cache frees up disk space and prevents tool lag. Output videos in <code style="color:#a78bfa; background:rgba(167,139,250,0.1); padding:1px 5px; border-radius:4px;">data/output</code> are permanently safe.
+          </div>
+          <button type="button" class="btn btn-secondary" onclick="cleanHealthCache()" id="btn-clean-health-cache" style="font-size:0.8rem; padding:6px 14px; display:inline-flex; align-items:center; gap:6px;">
+            🧹 Clean Temp Cache Now
+          </button>
+        </div>
+      </div>
+
+      <!-- Diagnostic Status Line -->
+      <div style="display:flex; align-items:center; justify-content:space-between; font-size:0.78rem; color:var(--text-muted); padding:8px 14px; background:rgba(0,0,0,0.3); border-radius:8px; border:1px solid rgba(255,255,255,0.05);">
+        <span id="health-gpu-text">⚡ GPU Acceleration: Detecting...</span>
+        <span id="health-ffmpeg-text">🎬 FFmpeg Engine: Checking...</span>
+      </div>
+
+    </div>
+
+    <!-- Action Footer -->
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-top:20px; padding-top:14px; border-top:1px solid var(--border-subtle);">
+      <div style="font-size:0.75rem; color:var(--text-muted);">
+        All systems verified for 2-hour long video rendering.
+      </div>
+      <button type="button" class="btn btn-primary" onclick="closeHealthGuardModal()" id="btn-health-continue" style="padding:10px 24px; font-weight:700; font-size:0.95rem; border-radius:10px; background:linear-gradient(135deg, #6366f1, #06b6d4); box-shadow:0 4px 16px rgba(99,102,241,0.35);">
+        Launch ATS Studio →
+      </button>
+    </div>
+
   </div>
 </div>
 

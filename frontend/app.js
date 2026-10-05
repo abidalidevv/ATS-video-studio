@@ -98,6 +98,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize Step 1 of Multi-Step Wizard
   goToWizardStep(1);
+
+  // Run System Health & Storage Pre-Flight Guard Check on Startup
+  checkSystemHealthOnStartup();
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1598,6 +1601,181 @@ function openSettingsPanel() {
 function closeSettingsPanel(event) {
   if (!event || event.target === document.getElementById('settings-panel')) {
     document.getElementById('settings-panel').classList.remove('visible');
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// System Health & Storage Guard Modal
+// ═══════════════════════════════════════════════════════════════════════════
+let _healthGuardAcknowledged = false;
+
+async function checkSystemHealthOnStartup(forceModal = false) {
+  try {
+    const res = await fetch(`${API}/api/system/health`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    // 1. Groq Status
+    const groqBadge = document.getElementById('health-groq-badge');
+    const groqMsg = document.getElementById('health-groq-msg');
+    const groqSubtitle = document.getElementById('health-groq-subtitle');
+    const groqInputWrap = document.getElementById('health-groq-input-wrap');
+
+    if (data.groq && data.groq.valid) {
+      if (groqBadge) {
+        groqBadge.textContent = '✅ Connected';
+        groqBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+        groqBadge.style.color = '#34d399';
+        groqBadge.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+      }
+      if (groqSubtitle) groqSubtitle.textContent = `Active Key: ${data.groq.masked_key}`;
+      if (groqMsg) groqMsg.innerHTML = `<span style="color:#34d399;">●</span> Groq AI Whisper transcription is online and operational for fast parallel chunking.`;
+      if (groqInputWrap) groqInputWrap.style.display = 'none';
+    } else {
+      if (groqBadge) {
+        groqBadge.textContent = '⚠️ Key Required';
+        groqBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+        groqBadge.style.color = '#f87171';
+        groqBadge.style.border = '1px solid rgba(239, 68, 68, 0.35)';
+      }
+      if (groqSubtitle) groqSubtitle.textContent = 'Action Required';
+      if (groqMsg) groqMsg.innerHTML = `<span style="color:#f87171;">●</span> ${data.groq ? data.groq.message : 'Missing API Key'}. Please enter a valid Groq API key to transcribe voiceovers.`;
+      if (groqInputWrap) groqInputWrap.style.display = 'block';
+    }
+
+    // 2. Storage / Cache Status
+    const cacheBadge = document.getElementById('health-cache-badge');
+    const cacheMsg = document.getElementById('health-cache-msg');
+    const cleanBtn = document.getElementById('btn-clean-health-cache');
+
+    if (data.cache && data.cache.size_bytes > 0) {
+      if (cacheBadge) {
+        cacheBadge.textContent = `⚠️ ${data.cache.size_formatted}`;
+        cacheBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+        cacheBadge.style.color = '#fbbf24';
+        cacheBadge.style.border = '1px solid rgba(245, 158, 11, 0.35)';
+      }
+      if (cacheMsg) {
+        cacheMsg.innerHTML = `<span style="color:#fbbf24;">●</span> Found <b>${data.cache.size_formatted}</b> in temporary cache (${data.cache.file_count} chunks/temp files). Clean this to keep the tool fast.`;
+      }
+      if (cleanBtn) {
+        cleanBtn.style.display = 'inline-flex';
+        cleanBtn.disabled = false;
+        cleanBtn.textContent = '🧹 Clean Temp Cache Now';
+      }
+    } else {
+      if (cacheBadge) {
+        cacheBadge.textContent = '✅ Clean (0 B)';
+        cacheBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+        cacheBadge.style.color = '#34d399';
+        cacheBadge.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+      }
+      if (cacheMsg) {
+        cacheMsg.innerHTML = `<span style="color:#34d399;">●</span> Storage is clean and optimal. No temporary junk or stale cache found.`;
+      }
+      if (cleanBtn) {
+        cleanBtn.textContent = '✅ Cache is Clean';
+        cleanBtn.disabled = true;
+      }
+    }
+
+    // 3. Diagnostics
+    const gpuEl = document.getElementById('health-gpu-text');
+    const ffmpegEl = document.getElementById('health-ffmpeg-text');
+    if (gpuEl && data.gpu) {
+      gpuEl.textContent = `⚡ GPU Acceleration: ${data.gpu.toUpperCase()}`;
+    }
+    if (ffmpegEl) {
+      ffmpegEl.textContent = `🎬 FFmpeg Engine: ${data.ffmpeg ? 'Ready (Bundled)' : 'Missing'}`;
+    }
+
+    // Open modal on launch if user hasn't acknowledged yet or if forced
+    if (forceModal || !_healthGuardAcknowledged) {
+      openHealthGuardModal(false);
+    }
+
+  } catch (err) {
+    console.warn('[HealthGuard] Startup health check error:', err);
+  }
+}
+
+function openHealthGuardModal(refresh = false) {
+  const modal = document.getElementById('health-guard-modal');
+  if (modal) {
+    modal.classList.add('visible');
+    if (refresh) checkSystemHealthOnStartup(true);
+  }
+}
+
+function closeHealthGuardModal(event) {
+  const modal = document.getElementById('health-guard-modal');
+  if (!modal) return;
+  if (!event || event.target === modal || (event.currentTarget && (event.currentTarget.id === 'btn-health-continue' || event.currentTarget.getAttribute('aria-label') === 'Close'))) {
+    modal.classList.remove('visible');
+    _healthGuardAcknowledged = true;
+  }
+}
+
+async function submitHealthGroqKey() {
+  const input = document.getElementById('health-groq-key-input');
+  const btn = document.getElementById('btn-save-health-groq');
+  const feedback = document.getElementById('health-groq-save-feedback');
+  if (!input) return;
+  const key = input.value.trim();
+  if (!key) {
+    showToast('Please paste a valid Groq API key', 'warning');
+    return;
+  }
+
+  const origText = btn ? btn.textContent : 'Save';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Verifying...'; }
+
+  try {
+    const res = await fetch(`${API}/api/system/update-groq-key`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groq_api_key: key })
+    });
+    const data = await res.json();
+    if (data.success && data.valid) {
+      showToast('✅ Groq API key verified and connected!', 'success');
+      if (feedback) {
+        feedback.innerHTML = `<span style="color:#34d399; font-weight:600;">${data.message}</span>`;
+      }
+      input.value = '';
+      await checkSystemHealthOnStartup(true);
+    } else {
+      showToast(`⚠️ ${data.message || 'Key verification failed'}`, 'error');
+      if (feedback) {
+        feedback.innerHTML = `<span style="color:#f87171;">${data.message}</span>`;
+      }
+    }
+  } catch (e) {
+    showToast(`Error: ${e.message}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = origText; }
+  }
+}
+
+async function cleanHealthCache() {
+  const btn = document.getElementById('btn-clean-health-cache');
+  const origText = btn ? btn.textContent : 'Clean';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Cleaning...'; }
+
+  try {
+    const res = await fetch(`${API}/api/system/clean-cache`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`🧹 Cleaned! Freed ${data.freed_formatted}`, 'success');
+      await checkSystemHealthOnStartup(true);
+    } else {
+      showToast('Cache cleaning completed', 'info');
+    }
+  } catch (e) {
+    showToast(`Clean error: ${e.message}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = origText; }
   }
 }
 

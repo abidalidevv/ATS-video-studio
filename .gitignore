@@ -41,5 +41,6 @@ data/settings.json
 build/
 dist/
 scratch/
+extra/
 *.zip
 

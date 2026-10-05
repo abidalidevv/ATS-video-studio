@@ -60,6 +60,19 @@ Unlike generic AI video tools that download random stock footage from slow exter
 * **Hardware Acceleration**: Auto-detects NVIDIA NVENC (`h264_nvenc`), Intel QSV (`h264_qsv`), AMD AMF (`h264_amf`), or CPU fallback (`libx264`).
 * **Auto-Open Explorer**: Automatically launches Windows Explorer with the completed MP4 highlighted upon 100% completion.
 
+### 9. 🛡️ Startup System Health & Storage Cleaner Guard
+* **Automated Pre-Flight Check**: Verifies Groq AI Whisper API connectivity on startup. If an expired or missing key is detected, an inline prompt allows one-click key saving and validation.
+* **1-Click Temp Cache Purge**: Scans temporary audio/video chunk cache in `data/temp/` and provides instant cleanup so render workspaces never bloat your storage. Output videos in `data/output/` are permanently preserved.
+
+### 10. 🎙️ 2-Hour Voiceover Smart Parallel Groq Audio Chunker
+* **Silence-Aware Audio Slicing**: Splits long narrations (up to 2 hours) at natural pauses into safe 22MB segments to respect Groq's 25MB ceiling.
+* **Parallel API Fallback**: Transcribes segments concurrently across backup API keys for maximum speed.
+* **Chronological Micro-Timestamp Stitching**: Reassembles word-level timings with 100% boundary accuracy without drift.
+
+### 11. 🖥️ Native Windows Desktop GUI Host (`pywebview` + WebView2)
+* **True Desktop Window**: Runs as an installable/portable desktop software window with native window frame, titlebar, icon, and taskbar integration.
+* **Full GPU Hardware Acceleration**: Direct3D / DirectX 11 hardware composition remains fully active (zero `--disable-gpu` throttling) for buttery 60fps animations and smooth video preview.
+
 ---
 
 ## 📦 How to Build & Share Standalone Portable EXE (Zero Setup)

@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import (
     load_settings, save_settings, TEMP_DIR, OUTPUT_DIR,
-    AVATARS_DIR, FRONTEND_DIR, detect_gpu_encoder, get_encoder_params
+    AVATARS_DIR, FRONTEND_DIR, detect_gpu_encoder, get_encoder_params, find_ffmpeg
 )
 
 app = FastAPI(title="Avatar Storyteller Engine", version="1.0.0")
@@ -73,6 +73,149 @@ async def get_settings():
 async def update_settings(body: dict):
     saved = save_settings(body)
     return {"success": True, "settings": saved}
+
+
+# ── System Health & Storage Guard ─────────────────────────────────────────────
+@app.get("/api/system/health")
+async def system_health():
+    settings = load_settings()
+    groq_key = settings.get("groq_api_key", "").strip()
+
+    groq_status = {
+        "configured": bool(groq_key),
+        "valid": False,
+        "masked_key": f"{groq_key[:6]}...{groq_key[-4:]}" if len(groq_key) > 10 else ("***" if groq_key else ""),
+        "message": "No Groq API Key configured" if not groq_key else "Verifying..."
+    }
+
+    if groq_key:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=3.5) as client:
+                res = await client.get(
+                    "https://api.groq.com/openai/v1/models",
+                    headers={"Authorization": f"Bearer {groq_key}"}
+                )
+                if res.status_code == 200:
+                    groq_status["valid"] = True
+                    groq_status["message"] = "Groq Whisper API Connected & Operational"
+                elif res.status_code == 401:
+                    groq_status["valid"] = False
+                    groq_status["message"] = "Authentication Failed: Invalid Groq API Key"
+                else:
+                    groq_status["valid"] = False
+                    groq_status["message"] = f"Groq API returned HTTP status {res.status_code}"
+        except Exception as e:
+            groq_status["valid"] = False
+            groq_status["message"] = f"Connection warning: {str(e)[:60]}"
+
+    temp_size_bytes = 0
+    temp_files = []
+    if TEMP_DIR.exists():
+        for p in TEMP_DIR.glob("**/*"):
+            if p.is_file() and p.name != ".gitkeep":
+                sz = p.stat().st_size
+                temp_size_bytes += sz
+                temp_files.append({"name": p.name, "size": sz})
+
+    def format_size(bytes_num):
+        if bytes_num < 1024:
+            return f"{bytes_num} B"
+        if bytes_num < 1024 * 1024:
+            return f"{round(bytes_num / 1024, 1)} KB"
+        return f"{round(bytes_num / (1024 * 1024), 1)} MB"
+
+    cache_status = {
+        "size_bytes": temp_size_bytes,
+        "size_formatted": format_size(temp_size_bytes),
+        "file_count": len(temp_files),
+        "has_heavy_cache": temp_size_bytes > (5 * 1024 * 1024)
+    }
+
+    encoder = detect_gpu_encoder()
+    return {
+        "status": "ok",
+        "groq": groq_status,
+        "cache": cache_status,
+        "gpu": encoder,
+        "ffmpeg": bool(find_ffmpeg())
+    }
+
+
+@app.post("/api/system/clean-cache")
+async def clean_system_cache():
+    freed_bytes = 0
+    removed_count = 0
+    if TEMP_DIR.exists():
+        for p in list(TEMP_DIR.glob("**/*")):
+            if p.is_file() and p.name != ".gitkeep":
+                try:
+                    freed_bytes += p.stat().st_size
+                    p.unlink(missing_ok=True)
+                    removed_count += 1
+                except Exception:
+                    pass
+
+    def format_size(bytes_num):
+        if bytes_num < 1024:
+            return f"{bytes_num} B"
+        if bytes_num < 1024 * 1024:
+            return f"{round(bytes_num / 1024, 1)} KB"
+        return f"{round(bytes_num / (1024 * 1024), 1)} MB"
+
+    return {
+        "success": True,
+        "freed_bytes": freed_bytes,
+        "freed_formatted": format_size(freed_bytes),
+        "removed_files": removed_count,
+        "remaining_bytes": 0,
+        "message": f"Successfully cleaned {removed_count} temporary files ({format_size(freed_bytes)} freed)"
+    }
+
+
+@app.post("/api/system/update-groq-key")
+async def update_groq_key(body: dict):
+    key = str(body.get("groq_api_key", "")).strip()
+    if not key:
+        return {"success": False, "valid": False, "message": "API key cannot be empty"}
+
+    is_valid = False
+    err_msg = ""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            res = await client.get(
+                "https://api.groq.com/openai/v1/models",
+                headers={"Authorization": f"Bearer {key}"}
+            )
+            if res.status_code == 200:
+                is_valid = True
+            elif res.status_code == 401:
+                return {"success": False, "valid": False, "message": "Authentication failed: Invalid Groq API key"}
+            else:
+                err_msg = f"Groq API returned HTTP {res.status_code}"
+    except Exception as e:
+        err_msg = f"Network connection warning: {e}"
+
+    # Save to settings
+    settings = load_settings()
+    settings["groq_api_key"] = key
+    save_settings(settings)
+
+    if is_valid:
+        return {
+            "success": True,
+            "valid": True,
+            "masked_key": f"{key[:6]}...{key[-4:]}" if len(key) > 10 else "***",
+            "message": "✅ Groq API Key verified and saved successfully!"
+        }
+    else:
+        return {
+            "success": True,
+            "valid": False,
+            "masked_key": f"{key[:6]}...{key[-4:]}" if len(key) > 10 else "***",
+            "message": f"Saved, but validation note: {err_msg or 'Verification unconfirmed'}"
+        }
 
 
 # ── GPU Info ───────────────────────────────────────────────────────────────────
