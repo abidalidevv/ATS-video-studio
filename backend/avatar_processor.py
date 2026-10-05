@@ -128,18 +128,9 @@ def add_avatar_stroke(
     # Apply a very slight blur to soften jagged stroke edges (anti-alias effect)
     # stroke_mask = stroke_mask.filter(ImageFilter.GaussianBlur(radius=0.8))
 
-    # Create solid-color stroke image using dilated mask
-    stroke_layer = Image.new("RGBA", img.size, color_val[:3] + (0,))
-    stroke_pixels = list(stroke_layer.getdata())
-    mask_pixels   = list(stroke_mask.getdata())
-    img_pixels    = list(alpha.getdata())
-
-    # Stroke pixel is visible where dilated mask > 0 but original alpha may be 0
-    for i in range(len(stroke_pixels)):
-        dilated_alpha = mask_pixels[i]
-        if dilated_alpha > 0:
-            stroke_pixels[i] = (*color_val[:3], dilated_alpha)
-    stroke_layer.putdata(stroke_pixels)
+    # Create solid-color stroke image using dilated mask via high-speed C-level putalpha (zero memory lag)
+    stroke_layer = Image.new("RGBA", img.size, color_val[:3] + (255,))
+    stroke_layer.putalpha(stroke_mask)
 
     # Composite: draw stroke layer first, then overlay original portrait on top
     result = Image.new("RGBA", img.size, (0, 0, 0, 0))

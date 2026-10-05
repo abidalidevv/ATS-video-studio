@@ -79,11 +79,13 @@ def process_voiceover_audio(
         freq_ratio      = 2.0 ** (pitch_semitones / 12.0)
         new_rate        = int(sample_rate * freq_ratio)
         restore_tempo   = 1.0 / freq_ratio
+        # Pre-resample to ensure source rate matches asetrate calculation exactly
+        filters.append(f"aresample={sample_rate}")
         # Set new sample rate (shifts pitch + changes speed)
         filters.append(f"asetrate={new_rate}")
         # Restore original tempo
         filters.extend(_build_atempo_chain(restore_tempo))
-        # Resample back to standard rate for compatibility
+        # Resample back to standard rate for final compatibility
         filters.append(f"aresample={sample_rate}")
         print(f"[AudioDSP] Pitch: {pitch_semitones:+.1f} semitones → "
               f"asetrate={new_rate}, restore_tempo={restore_tempo:.4f}")

@@ -510,7 +510,11 @@ def _run_render_pipeline_sync(job_id: str, params: dict):
         # ─ Step 4: Transcribe Audio → Subtitles ──────────────────────────────
         _update_job(job_id, {"percent": 52, "message": "Transcribing voiceover (Groq Whisper)..."})
         from .transcriber import transcribe_audio
-        transcript = transcribe_audio(processed_audio, niche=niche)
+
+        def on_transcribe_progress(msg: str, pct_delta: int = 0):
+            _update_job(job_id, {"percent": min(65, 52 + pct_delta), "message": msg})
+
+        transcript = transcribe_audio(processed_audio, niche=niche, progress_callback=on_transcribe_progress)
         scenes     = transcript.get("segments", [])
         _update_job(job_id, {"percent": 65, "message": f"Transcribed {len(scenes)} segments. Generating adaptive subtitles..."})
 
