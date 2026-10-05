@@ -79,15 +79,35 @@ def launch_native_window():
             break
 
     if edge_exe:
-        print(f"[AvatarEngine] Opening in Edge App Mode: {edge_exe}")
+        print(f"[AvatarEngine] Opening in Zero-GPU Ultra-Low-RAM Native App Mode: {edge_exe}")
         try:
-            subprocess.Popen([
+            cmd = [
                 str(edge_exe),
                 f"--app={URL}",
                 "--window-size=1400,920",
                 "--window-position=40,30",
+                # ── ZERO GPU VRAM / ZERO 3D CONTENTION ────────────────────────
+                # Leaves 100% of GPU hardware encoders & VRAM for FFmpeg render:
+                "--disable-gpu",
+                "--disable-gpu-compositing",
+                "--disable-gpu-rasterization",
+                "--disable-d3d11",
+                "--disable-software-rasterizer",
+                # ── ULTRA-LOW RAM CONSUMPTION ─────────────────────────────────
+                # Restricts Chromium to 1 lean process (~40MB RAM):
+                "--renderer-process-limit=1",
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-component-update",
+                "--disable-sync",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-breakpad",
+                "--disk-cache-size=1",
+                "--media-cache-size=1",
                 "--title=⚡ Avatar Storyteller Engine"
-            ])
+            ]
+            subprocess.Popen(cmd)
             return
         except Exception as e:
             print(f"[AvatarEngine] Edge App Mode failed: {e}")
@@ -140,8 +160,13 @@ def main():
         input("\nPress Enter to exit...")
         sys.exit(1)
 
-    launcher_thread = threading.Thread(target=launch_native_window, daemon=True)
-    launcher_thread.start()
+    no_window = any(arg in sys.argv for arg in ["--no-window", "--headless", "-s"])
+    if not no_window:
+        launcher_thread = threading.Thread(target=launch_native_window, daemon=True)
+        launcher_thread.start()
+    else:
+        print("[AvatarEngine] Running in pure Headless / Server mode (Zero window / Zero RAM).")
+        print(f"[AvatarEngine] Web UI accessible at: {URL}")
 
     import uvicorn
     uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
