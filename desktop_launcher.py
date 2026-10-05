@@ -1,7 +1,11 @@
 """
-Avatar Storyteller Video Engine — Desktop Launcher
-Launches the FastAPI backend and opens the UI in Microsoft Edge App Mode (no browser chrome).
-Adapted from VideoGen Studio (vg/desktop_launcher.py).
+Avatar Storyteller Video Engine — Native Windows Desktop Launcher
+Runs as a true native Windows installable/portable desktop application with:
+  - Native Windows desktop window (pywebview + Microsoft WebView2 runtime)
+  - Full GPU hardware acceleration enabled (Direct3D / DirectComposition)
+  - Background FastAPI/Uvicorn server running in a dedicated thread
+  - Clean shutdown when the desktop window is closed
+  - Robust fallbacks to Edge App Mode (with GPU enabled) or system browser
 """
 import sys
 import os
@@ -40,7 +44,7 @@ for b in [APP_DIR / "bin", BUNDLE_DIR / "bin", APP_DIR, BUNDLE_DIR]:
         os.environ["PATH"] = str(b) + os.pathsep + os.environ.get("PATH", "")
         break
 
-PORT = 8766    # Different from vg's 8765 to avoid port conflicts
+PORT = 8766
 HOST = "127.0.0.1"
 URL  = f"http://{HOST}:{PORT}"
 
@@ -50,74 +54,16 @@ def wait_for_server(timeout: float = 15.0) -> bool:
     start = time.time()
     while time.time() - start < timeout:
         try:
-            with urllib.request.urlopen(f"{URL}/api/settings", timeout=1.5) as resp:
+            with urllib.request.urlopen(f"{URL}/api/settings", timeout=1.2) as resp:
                 if resp.status == 200:
                     return True
         except Exception:
-            time.sleep(0.3)
+            time.sleep(0.25)
     return False
 
 
-def launch_native_window():
-    """Opens the app in Edge App Mode (no address bar, no browser chrome)."""
-    ready = wait_for_server()
-    if not ready:
-        time.sleep(1.5)
-
-    print(f"\n[AvatarEngine] ✅ Server ready at {URL}")
-
-    edge_candidates = [
-        Path(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
-        Path(os.environ.get("ProgramFiles",       "C:\\Program Files"))       / "Microsoft" / "Edge" / "Application" / "msedge.exe",
-        Path(os.environ.get("LOCALAPPDATA", ""))  / "Microsoft" / "Edge" / "Application" / "msedge.exe",
-    ]
-
-    edge_exe = None
-    for c in edge_candidates:
-        if c.exists():
-            edge_exe = c
-            break
-
-    if edge_exe:
-        print(f"[AvatarEngine] Opening in Zero-GPU Ultra-Low-RAM Native App Mode: {edge_exe}")
-        try:
-            cmd = [
-                str(edge_exe),
-                f"--app={URL}",
-                "--window-size=1400,920",
-                "--window-position=40,30",
-                # ── ZERO GPU VRAM / ZERO 3D CONTENTION ────────────────────────
-                # Leaves 100% of GPU hardware encoders & VRAM for FFmpeg render:
-                "--disable-gpu",
-                "--disable-gpu-compositing",
-                "--disable-gpu-rasterization",
-                "--disable-d3d11",
-                "--disable-software-rasterizer",
-                # ── ULTRA-LOW RAM CONSUMPTION ─────────────────────────────────
-                # Restricts Chromium to 1 lean process (~40MB RAM):
-                "--renderer-process-limit=1",
-                "--disable-extensions",
-                "--disable-background-networking",
-                "--disable-component-update",
-                "--disable-sync",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--disable-breakpad",
-                "--disk-cache-size=1",
-                "--media-cache-size=1",
-                "--title=⚡ Avatar Storyteller Engine"
-            ]
-            subprocess.Popen(cmd)
-            return
-        except Exception as e:
-            print(f"[AvatarEngine] Edge App Mode failed: {e}")
-
-    print("[AvatarEngine] Opening in default browser...")
-    webbrowser.open(URL)
-
-
 def kill_process_on_port(port: int):
-    """Kills any stale process on the given port."""
+    """Kills any stale process on the given port to avoid address-in-use errors."""
     if os.name != "nt":
         return
     try:
@@ -131,28 +77,64 @@ def kill_process_on_port(port: int):
             if len(parts) >= 5 and "LISTENING" in parts:
                 pid = int(parts[-1])
                 if pid != current_pid and pid > 0:
-                    print(f"[AvatarEngine] Killing stale process PID {pid} on port {port}")
+                    print(f"[AvatarEngine] Freeing port {port} (Terminating stale PID {pid})")
                     subprocess.run(f"taskkill /F /PID {pid}", shell=True, capture_output=True)
     except Exception:
         pass
 
 
+def launch_edge_fallback():
+    """Fallback: Launches standalone Edge App Mode with GPU Hardware Acceleration ENABLED."""
+    edge_candidates = [
+        Path(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")) / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+        Path(os.environ.get("ProgramFiles",       "C:\\Program Files"))       / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+        Path(os.environ.get("LOCALAPPDATA", ""))  / "Microsoft" / "Edge" / "Application" / "msedge.exe",
+    ]
+
+    edge_exe = None
+    for c in edge_candidates:
+        if c.exists():
+            edge_exe = c
+            break
+
+    if edge_exe:
+        print(f"[AvatarEngine] Fallback: Opening in Edge Desktop Window: {edge_exe}")
+        try:
+            # GPU hardware acceleration remains fully ACTIVE for maximum performance
+            cmd = [
+                str(edge_exe),
+                f"--app={URL}",
+                "--window-size=1420,920",
+                "--window-position=40,30",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--title=⚡ ATS Author Studio"
+            ]
+            subprocess.Popen(cmd)
+            return True
+        except Exception as e:
+            print(f"[AvatarEngine] Edge fallback failed: {e}")
+
+    return False
+
+
 def main():
-    print("=" * 70)
-    print("   ⚡  AVATAR STORYTELLER VIDEO ENGINE")
-    print("      Ultra-Fast Single-Pass GPU Faceless Video Generator")
-    print("=" * 70)
+    print("=" * 72)
+    print("   ⚡  AVATAR STORYTELLER VIDEO ENGINE — NATIVE DESKTOP STUDIO")
+    print("      Hardware GPU-Accelerated Windows Video Engine")
+    print("=" * 72)
     print(f"[AvatarEngine] App Directory: {APP_DIR}")
 
     kill_process_on_port(PORT)
 
-    print(f"[AvatarEngine] Starting backend server at {URL} ...")
-
+    print(f"[AvatarEngine] Initializing core backend server at {URL} ...")
     try:
         from backend.server import app
-        from backend.config import find_ffmpeg, find_ffprobe
-        print(f"[AvatarEngine] FFmpeg: {find_ffmpeg()}")
+        from backend.config import find_ffmpeg, find_ffprobe, detect_gpu_encoder
+        print(f"[AvatarEngine] FFmpeg:  {find_ffmpeg()}")
         print(f"[AvatarEngine] FFprobe: {find_ffprobe()}")
+        gpu = detect_gpu_encoder()
+        print(f"[AvatarEngine] GPU Hardware Encoder: {gpu.upper()} (GPU Acceleration ACTIVE)")
     except Exception as e:
         print(f"[ERROR] Failed to load backend: {e}")
         import traceback
@@ -160,16 +142,96 @@ def main():
         input("\nPress Enter to exit...")
         sys.exit(1)
 
-    no_window = any(arg in sys.argv for arg in ["--no-window", "--headless", "-s"])
-    if not no_window:
-        launcher_thread = threading.Thread(target=launch_native_window, daemon=True)
-        launcher_thread.start()
-    else:
-        print("[AvatarEngine] Running in pure Headless / Server mode (Zero window / Zero RAM).")
-        print(f"[AvatarEngine] Web UI accessible at: {URL}")
-
     import uvicorn
-    uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
+
+    # Check for CLI flags
+    no_window = any(arg in sys.argv for arg in ["--no-window", "--headless", "-s"])
+
+    # ── Start Backend Server in Background Daemon Thread ──────────────────────
+    def run_uvicorn():
+        config = uvicorn.Config(
+            app=app,
+            host=HOST,
+            port=PORT,
+            log_level="warning",
+            loop="asyncio"
+        )
+        server = uvicorn.Server(config)
+        server.run()
+
+    server_thread = threading.Thread(target=run_uvicorn, daemon=True, name="BackendServerThread")
+    server_thread.start()
+
+    # Wait until backend API responds
+    print(f"[AvatarEngine] Awaiting server readiness...")
+    if not wait_for_server(timeout=15.0):
+        print(f"[WARNING] Server did not respond within 15s. Proceeding anyway.")
+    else:
+        print(f"[AvatarEngine] ✅ Backend ready at {URL}")
+
+    # ── Pure Headless Mode ───────────────────────────────────────────────────
+    if no_window:
+        print("[AvatarEngine] Running in pure Headless / Server mode.")
+        print(f"[AvatarEngine] Open in browser or remote machine: {URL}")
+        try:
+            while server_thread.is_alive():
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n[AvatarEngine] Headless server stopped by user.")
+        sys.exit(0)
+
+    # ── Native Windows Desktop Window via pywebview (WebView2 + Full GPU) ────
+    icon_candidate = APP_DIR / "frontend" / "favicon.ico"
+    if not icon_candidate.exists():
+        icon_candidate = BUNDLE_DIR / "frontend" / "favicon.ico"
+    icon_path = str(icon_candidate) if icon_candidate.exists() else None
+
+    use_webview = True
+    try:
+        import webview
+        # Enable downloads (for exporting videos/subtitles directly)
+        webview.settings['ALLOW_DOWNLOADS'] = True
+        webview.settings['OPEN_EXTERNAL_LINKS_IN_BROWSER'] = True
+
+        print("[AvatarEngine] Launching Native Windows Desktop Window (GPU Accelerated)...")
+        window = webview.create_window(
+            title="⚡ ATS Author Studio — Avatar Video Engine",
+            url=URL,
+            width=1420,
+            height=920,
+            resizable=True,
+            min_size=(1024, 700),
+            background_color="#0b0f19",
+            text_select=True,
+        )
+
+        # Starts native Windows WinForms/WPF WebView2 host window on main thread
+        # Direct3D / DirectX 11 GPU hardware acceleration is active
+        webview.start(icon=icon_path, debug=False)
+
+        # When the user closes the native desktop window, cleanly exit
+        print("[AvatarEngine] Desktop window closed by user. Exiting cleanly.")
+        os._exit(0)
+
+    except Exception as e:
+        print(f"[AvatarEngine] pywebview native window error: {e}")
+        use_webview = False
+
+    # ── Fallback: Edge App Mode (with GPU enabled) or Default Browser ────────
+    if not use_webview:
+        print("[AvatarEngine] Falling back to desktop app mode...")
+        launched = launch_edge_fallback()
+        if not launched:
+            print(f"[AvatarEngine] Opening default browser at {URL} ...")
+            webbrowser.open(URL)
+
+        # Keep server alive while fallback browser window runs
+        try:
+            while server_thread.is_alive():
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n[AvatarEngine] Stopped by user.")
+            sys.exit(0)
 
 
 if __name__ == "__main__":

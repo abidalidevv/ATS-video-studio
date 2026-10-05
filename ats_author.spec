@@ -65,11 +65,15 @@ hidden_imports += collect_submodules("backend")
 hidden_imports += collect_submodules("uvicorn")
 hidden_imports += collect_submodules("starlette")
 hidden_imports += collect_submodules("fastapi")
+hidden_imports += collect_submodules("webview")
+hidden_imports += ["clr_loader", "pythonnet", "cffi"]
 
 # Collect static web assets, fonts, and clean data assets
 datas = [
     (str(BASE_DIR / "frontend"), "frontend"),
 ]
+datas += collect_data_files("webview")
+datas += collect_data_files("clr_loader")
 if (BASE_DIR / "backend" / "assets").exists():
     datas.append((str(BASE_DIR / "backend" / "assets"), "backend/assets"))
 if (BASE_DIR / "bin").exists():

@@ -4,7 +4,7 @@ color 0b
 
 echo ================================================================
 echo       AVATAR STORYTELLER ENGINE - STANDALONE EXE BUILDER
-echo   Zero-GPU / Low-RAM Native Standalone Windows Package
+echo   Native Windows Desktop Studio (Full GPU Acceleration Enabled)
 echo ================================================================
 echo.
 
@@ -48,10 +48,10 @@ if %ERRORLEVEL% NEQ 0 (
     )
 )
 
-%PY_EXE% -c "import fastapi, uvicorn, PIL, requests" >nul 2>&1
+%PY_EXE% -c "import fastapi, uvicorn, PIL, requests, webview, pythonnet" >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo       Installing required dependencies...
-    %PY_EXE% -m pip install fastapi uvicorn pillow requests python-multipart
+    echo       Installing required dependencies and native GUI libraries...
+    %PY_EXE% -m pip install fastapi uvicorn pillow requests python-multipart pywebview pythonnet
 )
 
 REM 3. Verify Portable FFmpeg in bin
@@ -157,8 +157,9 @@ echo ====================================================================== >> "
 echo. >> "dist\ATSAuthor\README_HOW_TO_RUN.txt"
 echo HOW TO RUN: >> "dist\ATSAuthor\README_HOW_TO_RUN.txt"
 echo   Option A (Recommended): Double-click "Launch-ATSAuthor.bat" or "ATSAuthor.exe". >> "dist\ATSAuthor\README_HOW_TO_RUN.txt"
-echo     - Opens in Zero-GPU Ultra-Low-RAM Native App window (~40MB RAM). >> "dist\ATSAuthor\README_HOW_TO_RUN.txt"
-echo     - 100%% of GPU VRAM is completely reserved for FFmpeg hardware render. >> "dist\ATSAuthor\README_HOW_TO_RUN.txt"
+echo     - Opens in a Native Windows Desktop GUI window (WebView2 Runtime). >> "dist\ATSAuthor\README_HOW_TO_RUN.txt"
+echo     - Full GPU Hardware Acceleration is ACTIVE for silky 60fps UI and playback. >> "dist\ATSAuthor\README_HOW_TO_RUN.txt"
+echo     - Not an external browser: Runs as a true native desktop application. >> "dist\ATSAuthor\README_HOW_TO_RUN.txt"
 echo. >> "dist\ATSAuthor\README_HOW_TO_RUN.txt"
 echo   Option B (Pure Headless): Double-click "Launch-Headless-Server.bat". >> "dist\ATSAuthor\README_HOW_TO_RUN.txt"
 echo     - Spawns zero browser window. >> "dist\ATSAuthor\README_HOW_TO_RUN.txt"
