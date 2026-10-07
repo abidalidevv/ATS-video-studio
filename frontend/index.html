@@ -699,17 +699,17 @@
             </div>
           </div>
           <label class="vis-switch-control" for="vis-toggle-checkbox" title="Toggle audio visualizer on or off">
-            <input type="checkbox" id="vis-toggle-checkbox" class="vis-switch-input" checked onchange="onVisToggleCheckbox(this.checked)" />
+            <input type="checkbox" id="vis-toggle-checkbox" class="vis-switch-input" onchange="onVisToggleCheckbox(this.checked)" />
             <span class="vis-switch-track"><span class="vis-switch-thumb"></span></span>
-            <span class="vis-switch-status-text" id="vis-toggle-label">✨ Visualizer ON</span>
+            <span class="vis-switch-status-text" id="vis-toggle-label">🚫 Visualizer OFF</span>
           </label>
         </div>
 
-        <div class="vis-disabled-banner" id="vis-disabled-banner">
+        <div class="vis-disabled-banner visible" id="vis-disabled-banner" style="display:block;">
           🚫 <strong>Audio Visualizer is OFF</strong> — Final video will render cleanly without player motion graphics (faster encoding).
         </div>
 
-        <div id="vis-controls-body">
+        <div id="vis-controls-body" style="display:none;">
 
         <!-- Mode Selector: Built-in Templates vs Custom Green-Screen Video -->
         <div class="slider-group" style="margin-bottom:var(--sp-md);">

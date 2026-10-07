@@ -54,8 +54,9 @@ DEFAULT_SETTINGS = {
     "avatar_stroke_color":   "white",       # white | gold | cyan | none
     "avatar_stroke_width":   10,
     # Background
-    "blur_radius":           12,            # 0 – 30
+    "blur_radius":           0,             # 0 – 30 (0 = clear/off)
     "dark_tint":             0.25,          # 0.0 – 0.8
+    "visualizer_enabled":    False,         # Off by default for maximum render speed
     # Audio DSP
     "pitch_semitones":       0.0,           # -4.0 – +4.0
     "voice_speed":           1.0,           # 0.8 – 1.25

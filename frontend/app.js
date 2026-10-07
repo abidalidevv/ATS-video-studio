@@ -29,7 +29,7 @@ const STATE = {
   captionPosition:  'center',
   captionSize:      'large',
   brollAudio:       'muted',
-  visualizerEnabled:  true,
+  visualizerEnabled:  false,
   visualizerStyle:    'glass_pill_cyan',
   visualizerPosition: 'top_center',
   visualizerTitle:    'Stoic Wisdom',
@@ -199,6 +199,8 @@ function initSliders() {
   if (pitchEl) onPitchSliderChange(pitchEl);
   const speedEl = document.getElementById('speed-slider');
   if (speedEl) onSpeedSliderChange(speedEl);
+  const blurEl = document.getElementById('blur-slider');
+  if (blurEl) updateBlurSlider(blurEl);
 }
 
 // ─ Quick Pitch & Speed Handlers ─────────────────────────────────────────────

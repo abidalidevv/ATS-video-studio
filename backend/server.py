@@ -789,7 +789,7 @@ def _run_render_pipeline_sync(job_id: str, params: dict):
         caption_position = params.get("caption_position", "center")  # Default: Dead Center
         caption_size     = params.get("caption_size", "large")       # Default: Large 68pt
         niche            = params.get("niche", "Stoicism & Philosophy")
-        visualizer_enabled  = bool(params.get("visualizer_enabled", True))
+        visualizer_enabled  = bool(params.get("visualizer_enabled", False))
         visualizer_style    = str(params.get("visualizer_style", "glass_pill_cyan"))
         visualizer_position = str(params.get("visualizer_position", "top_center"))
         visualizer_title    = str(params.get("visualizer_title", "")).strip() or niche
@@ -923,7 +923,7 @@ def _run_render_pipeline_sync(job_id: str, params: dict):
         bg_audio_path   = params.get("bg_audio_path")
         bg_music_volume = float(params.get("bg_music_volume", 0.07))
         final_render_audio = processed_audio
-        if bg_audio_path and Path(bg_audio_path).exists():
+        if bg_audio_path and str(bg_audio_path).strip() and Path(bg_audio_path).exists():
             _update_job(job_id, {"percent": 70, "message": f"Blending background ambience ({bg_music_volume*100:.0f}% volume)..."})
             try:
                 from .audio_dsp import mix_voiceover_and_bgm
