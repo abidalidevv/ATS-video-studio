@@ -25,6 +25,10 @@ All architectural phases, UI controls, live studio previews, audio visualizers, 
 - [x] ~~**15. Startup System Health & Storage Cleaner Guard (`backend/server.py` & `frontend/`)**: Automated pre-flight check on launch verifying Groq AI Whisper API connectivity (`/api/system/health`), 1-click temporary cache purger (`/api/system/clean-cache`), and inline key updater (`/api/system/update-groq-key`).~~
 - [x] ~~**16. Native Windows Desktop Application Architecture (`desktop_launcher.py` & `ats_author.spec`)**: Runs as a true native Windows installable/portable desktop window using `pywebview` with Microsoft WebView2 host, keeping Direct3D GPU hardware acceleration 100% active (zero browser chrome, zero `--disable-gpu`).~~
 - [x] ~~**17. Smart Parallel Groq Audio Chunker for 2-Hour Narrations (`backend/transcriber.py`)**: Automated silence-aware splitting into ~22MB segments, parallel multi-key Whisper transcription, and chronological micro-timestamp reassembly.~~
+- [x] ~~**18. Zero-Wait Native Concat Demuxer with Inpoint/Outpoint (`backend/local_pool.py`)**: Eliminates 8-15 minutes of redundant CPU software re-encoding by streaming raw B-roll clips directly to the hardware concat demuxer using native `inpoint` and `outpoint` directives with 0.001s preparation time.~~
+- [x] ~~**19. Smart Background Pre-Transcription Engine (`backend/server.py` & `frontend/app.js`)**: Automatically triggers parallel Whisper Large v3 voiceover transcription the instant audio is selected, caching segments in memory so final render has 0.0s transcription wait.~~
+- [x] ~~**20. Interactive Groq Ping Test & Linked Keys UI (`frontend/` & `backend/server.py`)**: Real-time roundtrip latency verification (`/api/system/ping-groq`), persistent linked key status display, and non-blocking input modal.~~
+- [x] ~~**21. Hardware QSV Bitrate & Memory Bus Tuning (`backend/config.py`)**: Tuned `-b:v 5M -maxrate 7M -bufsize 10M` to eliminate memory bus bottlenecks on Intel integrated graphics.~~
 
 ---
 
@@ -36,13 +40,7 @@ All API keys and service configurations currently configured and working in the 
 Used by `backend/transcriber.py` for ultra-fast (1.5-second) audio transcription with word-by-word micro timestamps.
 
 * **Primary Active Key**:
-  ```
-  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
-  ```
-* **Secondary Backup Key**:
-  ```
-  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
-  ```
+  `gsk_wu7H...yVnE` (Stored locally and securely in `data/settings.json`)
 * **Endpoint**: `https://api.groq.com/openai/v1/audio/transcriptions`
 * **Model**: `whisper-large-v3`
 

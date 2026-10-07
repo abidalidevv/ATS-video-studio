@@ -1263,7 +1263,24 @@
           Verifying Groq API connection and authentication...
         </div>
 
-        <!-- Inline Groq Key Editor (shown if invalid or missing) -->
+        <!-- Linked Key Display & Ping Test Action Bar -->
+        <div id="health-groq-linked-panel" style="display:none; margin:10px 0; padding:10px 14px; border-radius:10px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.2); align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:0.8rem; color:var(--text-muted);">Linked Key:</span>
+            <code id="health-groq-linked-key-val" style="color:#38bdf8; font-weight:700; font-size:0.85rem; letter-spacing:0.03em;">gsk_...</code>
+            <span id="health-groq-ping-latency" style="font-size:0.75rem; color:#34d399; font-weight:600;">(Testing...)</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <button type="button" class="btn btn-secondary" onclick="runGroqPingTest()" id="btn-ping-groq" style="font-size:0.75rem; padding:4px 12px; display:inline-flex; align-items:center; gap:5px;">
+              ⚡ Ping Test
+            </button>
+            <button type="button" class="btn btn-ghost" onclick="toggleHealthGroqInput()" style="font-size:0.75rem; padding:4px 8px; color:var(--text-muted);">
+              ✏️ Change Key
+            </button>
+          </div>
+        </div>
+
+        <!-- Inline Groq Key Editor (shown if invalid, missing, or toggled) -->
         <div id="health-groq-input-wrap" style="display:none; margin-top:12px; background:rgba(244,63,94,0.06); padding:12px; border-radius:10px; border:1px solid rgba(244,63,94,0.3);">
           <label style="font-size:0.78rem; color:#fda4af; display:block; margin-bottom:6px; font-weight:600;">🔑 Enter your active Groq API Key to enable transcription:</label>
           <div style="display:flex; gap:8px;">

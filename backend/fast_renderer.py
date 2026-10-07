@@ -103,18 +103,6 @@ def _build_filter_complex(
     # Slow-motion factor: if speed=0.75, setpts = 1/0.75 ≈ 1.333
     setpts_factor = 1.0 / max(0.1, speed_multiplier)
 
-    # Blur filter — 0 = no blur
-    if blur_radius > 0:
-        r = max(1, min(30, int(blur_radius)))
-        blur_filter = f"avgblur=sizeX={r}:sizeY={r}"
-    else:
-        blur_filter = "null"
-
-    # Dark tint via colorchannelmixer alpha reduction
-    # aa=0.65 means 35% dimmed; aa=0.20 means 80% dimmed
-    tint_alpha  = max(0.20, 1.0 - float(dark_tint))
-    tint_filter = f"colorchannelmixer=aa={tint_alpha:.3f}"
-
     # Avatar overlay coordinates (handles free canvas drag & drop)
     overlay_coords = _build_avatar_overlay_coords(
         position=avatar_position,
@@ -145,15 +133,21 @@ def _build_filter_complex(
     eff_source_fps = 30.0 * max(0.1, float(speed_multiplier))
 
     # Step 1: Standardize stock footage to 1920x1080 (16:9 square pixels), apply slow-mo, then smooth to 30fps
-    filters.append(
-        f"[0:v]scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=increase:flags=fast_bilinear,"
-        f"crop={canvas_w}:{canvas_h},"
-        f"setsar=1,"
-        f"setpts=N/({eff_source_fps:.4f}*TB),"
-        f"fps=30,"
-        f"{blur_filter},"
-        f"{tint_filter}[bg]"
-    )
+    bg_subfilters = [
+        f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=increase:flags=fast_bilinear",
+        f"crop={canvas_w}:{canvas_h}",
+        "setsar=1",
+        f"setpts=N/({eff_source_fps:.4f}*TB)",
+        "fps=30"
+    ]
+    if blur_radius > 0:
+        r = max(1, min(30, int(blur_radius)))
+        bg_subfilters.append(f"avgblur=sizeX={r}:sizeY={r}")
+    if dark_tint > 0.02:
+        tint_alpha = max(0.20, 1.0 - float(dark_tint))
+        bg_subfilters.append(f"colorchannelmixer=aa={tint_alpha:.3f}")
+
+    filters.append(f"[0:v]{','.join(bg_subfilters)}[bg]")
 
     # Step 2: Overlay avatar on background (avatar is crisp, not blurred)
     if avatar_opacity < 0.99:

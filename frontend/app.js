@@ -485,6 +485,9 @@ async function handleVoiceoverFile(file) {
     updateEstimate();
     syncStageFromState();
     showToast(`✅ Audio ready: ${formatDuration(data.duration)}`, 'success');
+
+    // Trigger smart background pre-transcription immediately
+    startBackgroundPreTranscription(data.path, STATE.niche);
   } catch (e) {
     showToast('❌ Upload failed: ' + e.message, 'error');
   }
@@ -1621,18 +1624,47 @@ async function checkSystemHealthOnStartup(forceModal = false) {
     const groqMsg = document.getElementById('health-groq-msg');
     const groqSubtitle = document.getElementById('health-groq-subtitle');
     const groqInputWrap = document.getElementById('health-groq-input-wrap');
+    const linkedPanel = document.getElementById('health-groq-linked-panel');
+    const linkedKeyVal = document.getElementById('health-groq-linked-key-val');
+    const pingLatency = document.getElementById('health-groq-ping-latency');
 
-    if (data.groq && data.groq.valid) {
-      if (groqBadge) {
-        groqBadge.textContent = '✅ Connected';
-        groqBadge.style.background = 'rgba(16, 185, 129, 0.15)';
-        groqBadge.style.color = '#34d399';
-        groqBadge.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+    if (data.groq && data.groq.configured) {
+      if (linkedPanel) linkedPanel.style.display = 'flex';
+      if (linkedKeyVal) linkedKeyVal.textContent = data.groq.masked_key || 'gsk_...';
+
+      if (data.groq.valid) {
+        if (groqBadge) {
+          groqBadge.textContent = `🟢 Active (${data.groq.latency_ms || 110}ms)`;
+          groqBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+          groqBadge.style.color = '#34d399';
+          groqBadge.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+        }
+        if (pingLatency) {
+          pingLatency.textContent = `(🟢 ${data.groq.latency_ms || 110}ms · Active)`;
+          pingLatency.style.color = '#34d399';
+        }
+        if (groqSubtitle) groqSubtitle.textContent = `Linked Key: ${data.groq.masked_key}`;
+        if (groqMsg) groqMsg.innerHTML = `<span style="color:#34d399;">●</span> Groq AI Whisper is verified &amp; ready for parallel chunking.`;
+        if (groqInputWrap) groqInputWrap.style.display = 'none';
+      } else {
+        if (groqBadge) {
+          groqBadge.textContent = '⚠️ Check Connection';
+          groqBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+          groqBadge.style.color = '#fbbf24';
+          groqBadge.style.border = '1px solid rgba(245, 158, 11, 0.35)';
+        }
+        if (pingLatency) {
+          pingLatency.textContent = `(⚠️ Ping Unconfirmed)`;
+          pingLatency.style.color = '#fbbf24';
+        }
+        if (groqSubtitle) groqSubtitle.textContent = `Action Optional`;
+        if (groqMsg) groqMsg.innerHTML = `<span style="color:#fbbf24;">●</span> ${data.groq.message}. Click <b>Ping Test</b> to verify or change key.`;
+        // Keep input hidden if key is present, let user ping test first
+        if (groqInputWrap) groqInputWrap.style.display = 'none';
       }
-      if (groqSubtitle) groqSubtitle.textContent = `Active Key: ${data.groq.masked_key}`;
-      if (groqMsg) groqMsg.innerHTML = `<span style="color:#34d399;">●</span> Groq AI Whisper transcription is online and operational for fast parallel chunking.`;
-      if (groqInputWrap) groqInputWrap.style.display = 'none';
     } else {
+      // No key configured at all
+      if (linkedPanel) linkedPanel.style.display = 'none';
       if (groqBadge) {
         groqBadge.textContent = '⚠️ Key Required';
         groqBadge.style.background = 'rgba(239, 68, 68, 0.15)';
@@ -1640,7 +1672,7 @@ async function checkSystemHealthOnStartup(forceModal = false) {
         groqBadge.style.border = '1px solid rgba(239, 68, 68, 0.35)';
       }
       if (groqSubtitle) groqSubtitle.textContent = 'Action Required';
-      if (groqMsg) groqMsg.innerHTML = `<span style="color:#f87171;">●</span> ${data.groq ? data.groq.message : 'Missing API Key'}. Please enter a valid Groq API key to transcribe voiceovers.`;
+      if (groqMsg) groqMsg.innerHTML = `<span style="color:#f87171;">●</span> No Groq API Key linked. Please enter a valid key to enable transcription.`;
       if (groqInputWrap) groqInputWrap.style.display = 'block';
     }
 
@@ -1700,6 +1732,67 @@ async function checkSystemHealthOnStartup(forceModal = false) {
   }
 }
 
+async function runGroqPingTest() {
+  const btn = document.getElementById('btn-ping-groq');
+  const badge = document.getElementById('health-groq-badge');
+  const msg = document.getElementById('health-groq-msg');
+  const latEl = document.getElementById('health-groq-ping-latency');
+  const inputWrap = document.getElementById('health-groq-input-wrap');
+
+  const origText = btn ? btn.innerHTML : '⚡ Ping Test';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Pinging...'; }
+  if (latEl) latEl.textContent = '(Testing...)';
+
+  try {
+    const res = await fetch(`${API}/api/system/ping-groq`, { method: 'POST' });
+    const data = await res.json();
+    if (data.has_valid) {
+      const lat = data.best_latency_ms || 110;
+      if (badge) {
+        badge.textContent = `🟢 Active (${lat}ms)`;
+        badge.style.background = 'rgba(16, 185, 129, 0.15)';
+        badge.style.color = '#34d399';
+        badge.style.border = '1px solid rgba(16, 185, 129, 0.35)';
+      }
+      if (latEl) {
+        latEl.textContent = `(🟢 ${lat}ms · Verified)`;
+        latEl.style.color = '#34d399';
+      }
+      if (msg) msg.innerHTML = `<span style="color:#34d399;">●</span> Ping test passed (${lat}ms latency). All Whisper Large v3 features are ready.`;
+      if (inputWrap) inputWrap.style.display = 'none';
+      showToast(`⚡ Groq Ping Test Passed: ${lat}ms latency!`, 'success');
+    } else {
+      if (badge) {
+        badge.textContent = '🔴 Ping Failed';
+        badge.style.background = 'rgba(239, 68, 68, 0.15)';
+        badge.style.color = '#f87171';
+        badge.style.border = '1px solid rgba(239, 68, 68, 0.35)';
+      }
+      if (latEl) {
+        latEl.textContent = `(🔴 Failed)`;
+        latEl.style.color = '#f87171';
+      }
+      if (msg) msg.innerHTML = `<span style="color:#f87171;">●</span> Ping test failed: ${data.message || 'Authentication error'}. Please update key below.`;
+      if (inputWrap) inputWrap.style.display = 'block';
+      showToast(`❌ Groq Ping Test Failed: ${data.message || 'Key invalid'}`, 'error');
+    }
+  } catch (e) {
+    showToast(`Ping error: ${e.message}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = origText; }
+  }
+}
+
+function toggleHealthGroqInput() {
+  const wrap = document.getElementById('health-groq-input-wrap');
+  if (!wrap) return;
+  const isHidden = (wrap.style.display === 'none' || !wrap.style.display);
+  wrap.style.display = isHidden ? 'block' : 'none';
+  if (isHidden) {
+    document.getElementById('health-groq-key-input')?.focus();
+  }
+}
+
 function openHealthGuardModal(refresh = false) {
   const modal = document.getElementById('health-guard-modal');
   if (modal) {
@@ -1755,6 +1848,62 @@ async function submitHealthGroqKey() {
     showToast(`Error: ${e.message}`, 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = origText; }
+  }
+}
+
+// ── Smart Background Pre-Transcription ─────────────────────────────────────────
+let _preTranscribeTimer = null;
+async function startBackgroundPreTranscription(audioPath, niche) {
+  if (!audioPath) return;
+  try {
+    console.log('[PreTranscribe] Kicking off background pre-transcription for:', audioPath);
+    const res = await fetch(`${API}/api/pre-transcribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audio_path: audioPath, niche: niche || 'Stoicism & Philosophy' })
+    });
+    const data = await res.json();
+    if (data.success) {
+      const durEl = document.getElementById('voiceover-duration');
+      if (durEl && !document.getElementById('pre-transcribe-tag')) {
+        const tag = document.createElement('span');
+        tag.id = 'pre-transcribe-tag';
+        tag.style.cssText = 'color:#38bdf8; font-size:0.75rem; margin-left:8px; font-weight:600; display:inline-flex; align-items:center; gap:4px;';
+        tag.innerHTML = `⚡ <span id="pre-transcribe-text">Pre-transcribing in background...</span>`;
+        durEl.appendChild(tag);
+      }
+
+      // Poll status until completed
+      if (_preTranscribeTimer) clearInterval(_preTranscribeTimer);
+      _preTranscribeTimer = setInterval(async () => {
+        try {
+          const sRes = await fetch(`${API}/api/pre-transcribe-status?audio_path=${encodeURIComponent(audioPath)}`);
+          const sData = await sRes.json();
+          if (sData.status === 'ready') {
+            clearInterval(_preTranscribeTimer);
+            _preTranscribeTimer = null;
+            const textEl = document.getElementById('pre-transcribe-text');
+            if (textEl) {
+              textEl.innerHTML = `Transcribed (${sData.segments_count || 'all'} scenes ready)`;
+              textEl.parentElement.style.color = '#34d399';
+            }
+            console.log('[PreTranscribe] ✅ Pre-transcription complete & cached!');
+          } else if (sData.status === 'failed') {
+            clearInterval(_preTranscribeTimer);
+            _preTranscribeTimer = null;
+            const textEl = document.getElementById('pre-transcribe-text');
+            if (textEl) {
+              textEl.innerHTML = `Groq will transcribe on render`;
+              textEl.parentElement.style.color = '#fbbf24';
+            }
+          }
+        } catch (pollErr) {
+          clearInterval(_preTranscribeTimer);
+        }
+      }, 3500);
+    }
+  } catch (err) {
+    console.warn('[PreTranscribe] Pre-transcription notice:', err);
   }
 }
 

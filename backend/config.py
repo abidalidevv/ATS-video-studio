@@ -234,7 +234,7 @@ def get_encoder_params(encoder: str) -> dict:
         "h264_qsv": {
             "codec":   "h264_qsv",
             "preset":  "veryfast",
-            "extras":  ["-async_depth", "4", "-b:v", "8M"],
+            "extras":  ["-async_depth", "4", "-b:v", "5M", "-maxrate", "7M", "-bufsize", "10M"],
             "pix_fmt": "nv12",
         },
         "h264_amf": {

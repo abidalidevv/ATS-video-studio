@@ -9,6 +9,8 @@ import json
 import shutil
 import subprocess
 import traceback
+import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException
@@ -30,8 +32,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Job Progress Store ─────────────────────────────────────────────────────────
+# ── Job Progress & Background Transcription Store ──────────────────────────────
 _jobs: Dict[str, Dict[str, Any]] = {}
+
+_TRANSCRIPTION_CACHE: Dict[str, Dict[str, Any]] = {}
+_TRANSCRIPTION_TASKS: Dict[str, Dict[str, Any]] = {}
+_TRANSCRIPTION_LOCK = threading.Lock()
 
 
 def _update_job(job_id: str, data: dict):
@@ -79,35 +85,58 @@ async def update_settings(body: dict):
 @app.get("/api/system/health")
 async def system_health():
     settings = load_settings()
-    groq_key = settings.get("groq_api_key", "").strip()
+    keys_list = settings.get("groq_api_keys", [])
+    primary_key = settings.get("groq_api_key", "").strip()
+    if primary_key and primary_key not in keys_list:
+        keys_list.insert(0, primary_key)
+
+    masked_primary = f"{primary_key[:6]}...{primary_key[-4:]}" if len(primary_key) > 10 else ("***" if primary_key else "")
+    
+    linked_keys = []
+    for idx, k in enumerate(keys_list):
+        k_str = str(k).strip()
+        if not k_str:
+            continue
+        m = f"{k_str[:6]}...{k_str[-4:]}" if len(k_str) > 10 else "***"
+        linked_keys.append({
+            "key_masked": m,
+            "is_primary": (k_str == primary_key or idx == 0),
+        })
 
     groq_status = {
-        "configured": bool(groq_key),
+        "configured": bool(primary_key or keys_list),
         "valid": False,
-        "masked_key": f"{groq_key[:6]}...{groq_key[-4:]}" if len(groq_key) > 10 else ("***" if groq_key else ""),
-        "message": "No Groq API Key configured" if not groq_key else "Verifying..."
+        "masked_key": masked_primary,
+        "linked_keys": linked_keys,
+        "linked_keys_count": len(linked_keys),
+        "latency_ms": 0,
+        "message": "No Groq API Key linked" if not (primary_key or keys_list) else "Verifying connection..."
     }
 
-    if groq_key:
+    test_key = primary_key or (keys_list[0] if keys_list else "")
+    if test_key:
         try:
             import httpx
-            async with httpx.AsyncClient(timeout=3.5) as client:
+            t0 = time.time()
+            async with httpx.AsyncClient(timeout=6.0) as client:
                 res = await client.get(
                     "https://api.groq.com/openai/v1/models",
-                    headers={"Authorization": f"Bearer {groq_key}"}
+                    headers={"Authorization": f"Bearer {test_key}"}
                 )
+                lat = int((time.time() - t0) * 1000)
+                groq_status["latency_ms"] = lat
                 if res.status_code == 200:
                     groq_status["valid"] = True
-                    groq_status["message"] = "Groq Whisper API Connected & Operational"
+                    groq_status["message"] = f"Groq Whisper API Connected ({lat}ms)"
                 elif res.status_code == 401:
                     groq_status["valid"] = False
-                    groq_status["message"] = "Authentication Failed: Invalid Groq API Key"
+                    groq_status["message"] = "Authentication Failed: Invalid/Expired Key (401)"
                 else:
                     groq_status["valid"] = False
-                    groq_status["message"] = f"Groq API returned HTTP status {res.status_code}"
+                    groq_status["message"] = f"Groq API returned HTTP {res.status_code}"
         except Exception as e:
             groq_status["valid"] = False
-            groq_status["message"] = f"Connection warning: {str(e)[:60]}"
+            groq_status["message"] = f"Connection warning: {str(e)[:50]}"
 
     temp_size_bytes = 0
     temp_files = []
@@ -139,6 +168,105 @@ async def system_health():
         "cache": cache_status,
         "gpu": encoder,
         "ffmpeg": bool(find_ffmpeg())
+    }
+
+
+@app.post("/api/system/ping-groq")
+async def ping_groq(body: dict = None):
+    """
+    Tests one or all linked Groq API keys against Groq API.
+    Measures roundtrip latency in ms and returns individual key health.
+    """
+    body = body or {}
+    key_override = str(body.get("groq_api_key", "")).strip()
+
+    settings = load_settings()
+    keys_list = settings.get("groq_api_keys", [])
+    primary = settings.get("groq_api_key", "").strip()
+    if primary and primary not in keys_list:
+        keys_list.insert(0, primary)
+
+    if key_override:
+        keys_to_test = [key_override]
+    else:
+        keys_to_test = list(keys_list) if keys_list else ([primary] if primary else [])
+
+    if not keys_to_test:
+        return {
+            "success": False,
+            "has_valid": False,
+            "message": "No Groq API keys configured to ping",
+            "results": []
+        }
+
+    results = []
+    import httpx
+    async with httpx.AsyncClient(timeout=7.0) as client:
+        for idx, k in enumerate(keys_to_test):
+            k_str = str(k).strip()
+            if not k_str:
+                continue
+            masked = f"{k_str[:6]}...{k_str[-4:]}" if len(k_str) > 10 else "***"
+            t0 = time.time()
+            try:
+                res = await client.get(
+                    "https://api.groq.com/openai/v1/models",
+                    headers={"Authorization": f"Bearer {k_str}"}
+                )
+                lat = int((time.time() - t0) * 1000)
+                if res.status_code == 200:
+                    results.append({
+                        "key_masked": masked,
+                        "valid": True,
+                        "status_code": 200,
+                        "latency_ms": lat,
+                        "message": f"Active & Operational ({lat}ms)",
+                        "is_primary": (idx == 0)
+                    })
+                elif res.status_code == 401:
+                    results.append({
+                        "key_masked": masked,
+                        "valid": False,
+                        "status_code": 401,
+                        "latency_ms": lat,
+                        "message": "Invalid or Expired API Key (401 Unauthorized)",
+                        "is_primary": (idx == 0)
+                    })
+                else:
+                    results.append({
+                        "key_masked": masked,
+                        "valid": False,
+                        "status_code": res.status_code,
+                        "latency_ms": lat,
+                        "message": f"HTTP {res.status_code}",
+                        "is_primary": (idx == 0)
+                    })
+            except Exception as e:
+                lat = int((time.time() - t0) * 1000)
+                results.append({
+                    "key_masked": masked,
+                    "valid": False,
+                    "status_code": 0,
+                    "latency_ms": lat,
+                    "message": f"Connection error: {str(e)[:50]}",
+                    "is_primary": (idx == 0)
+                })
+
+    has_valid = any(r["valid"] for r in results)
+    best_lat = min([r["latency_ms"] for r in results if r["valid"]], default=0)
+
+    # If key_override tested valid, save it as primary
+    if key_override and has_valid:
+        settings["groq_api_key"] = key_override
+        save_settings(settings)
+
+    return {
+        "success": True,
+        "has_valid": has_valid,
+        "results": results,
+        "best_latency_ms": best_lat,
+        "active_key_masked": results[0]["key_masked"] if results else "",
+        "message": f"Ping passed: {best_lat}ms latency" if has_valid else "Ping test failed: No working API key"
     }
 
 
@@ -181,17 +309,20 @@ async def update_groq_key(body: dict):
 
     is_valid = False
     err_msg = ""
+    lat = 0
     try:
         import httpx
-        async with httpx.AsyncClient(timeout=4.0) as client:
+        t0 = time.time()
+        async with httpx.AsyncClient(timeout=6.0) as client:
             res = await client.get(
                 "https://api.groq.com/openai/v1/models",
                 headers={"Authorization": f"Bearer {key}"}
             )
+            lat = int((time.time() - t0) * 1000)
             if res.status_code == 200:
                 is_valid = True
             elif res.status_code == 401:
-                return {"success": False, "valid": False, "message": "Authentication failed: Invalid Groq API key"}
+                return {"success": False, "valid": False, "message": "Authentication failed: Invalid Groq API key (401)"}
             else:
                 err_msg = f"Groq API returned HTTP {res.status_code}"
     except Exception as e:
@@ -202,20 +333,101 @@ async def update_groq_key(body: dict):
     settings["groq_api_key"] = key
     save_settings(settings)
 
+    masked = f"{key[:6]}...{key[-4:]}" if len(key) > 10 else "***"
     if is_valid:
         return {
             "success": True,
             "valid": True,
-            "masked_key": f"{key[:6]}...{key[-4:]}" if len(key) > 10 else "***",
-            "message": "✅ Groq API Key verified and saved successfully!"
+            "masked_key": masked,
+            "latency_ms": lat,
+            "message": f"✅ Groq API Key verified and saved successfully ({lat}ms)!"
         }
     else:
         return {
             "success": True,
             "valid": False,
-            "masked_key": f"{key[:6]}...{key[-4:]}" if len(key) > 10 else "***",
+            "masked_key": masked,
+            "latency_ms": lat,
             "message": f"Saved, but validation note: {err_msg or 'Verification unconfirmed'}"
         }
+
+
+# ── Background Pre-Transcription Engine ───────────────────────────────────────
+@app.post("/api/pre-transcribe")
+async def pre_transcribe(body: dict):
+    """
+    Kicks off background transcription of voiceover as soon as it is selected,
+    eliminating transcription waiting during final render.
+    """
+    audio_path = str(body.get("audio_path", "")).strip()
+    niche = str(body.get("niche", "Stoicism & Philosophy")).strip()
+
+    if not audio_path or not Path(audio_path).exists():
+        return {"success": False, "error": "Voiceover audio file not found"}
+
+    with _TRANSCRIPTION_LOCK:
+        if audio_path in _TRANSCRIPTION_CACHE:
+            return {
+                "success": True,
+                "status": "ready",
+                "cached": True,
+                "segments_count": len(_TRANSCRIPTION_CACHE[audio_path].get("segments", []))
+            }
+
+        if audio_path in _TRANSCRIPTION_TASKS and _TRANSCRIPTION_TASKS[audio_path].get("status") == "running":
+            return {"success": True, "status": "running"}
+
+        def _worker():
+            try:
+                from .transcriber import transcribe_audio
+                print(f"[PreTranscribe] 🚀 Starting background pre-transcription for {Path(audio_path).name}...")
+                res = transcribe_audio(audio_path, niche=niche)
+                with _TRANSCRIPTION_LOCK:
+                    _TRANSCRIPTION_CACHE[audio_path] = res
+                    if audio_path in _TRANSCRIPTION_TASKS:
+                        _TRANSCRIPTION_TASKS[audio_path]["status"] = "ready"
+                        _TRANSCRIPTION_TASKS[audio_path]["segments_count"] = len(res.get("segments", []))
+                print(f"[PreTranscribe] ✅ Pre-transcription cached for {Path(audio_path).name} ({len(res.get('segments', []))} segments)")
+            except Exception as err:
+                print(f"[PreTranscribe] ⚠️ Background pre-transcription failed: {err}")
+                with _TRANSCRIPTION_LOCK:
+                    if audio_path in _TRANSCRIPTION_TASKS:
+                        _TRANSCRIPTION_TASKS[audio_path]["status"] = "failed"
+                        _TRANSCRIPTION_TASKS[audio_path]["error"] = str(err)
+
+        th = threading.Thread(target=_worker, daemon=True)
+        _TRANSCRIPTION_TASKS[audio_path] = {
+            "status": "running",
+            "thread": th,
+            "started_at": time.time()
+        }
+        th.start()
+
+    return {"success": True, "status": "started"}
+
+
+@app.get("/api/pre-transcribe-status")
+async def pre_transcribe_status(audio_path: str = ""):
+    """Returns background pre-transcription progress/status for an audio file."""
+    audio_path = audio_path.strip()
+    if not audio_path:
+        return {"status": "idle"}
+
+    with _TRANSCRIPTION_LOCK:
+        if audio_path in _TRANSCRIPTION_CACHE:
+            return {
+                "status": "ready",
+                "cached": True,
+                "segments_count": len(_TRANSCRIPTION_CACHE[audio_path].get("segments", []))
+            }
+        if audio_path in _TRANSCRIPTION_TASKS:
+            task = _TRANSCRIPTION_TASKS[audio_path]
+            return {
+                "status": task.get("status", "running"),
+                "error": task.get("error", ""),
+                "elapsed": round(time.time() - task.get("started_at", time.time()), 1)
+            }
+    return {"status": "idle"}
 
 
 # ── GPU Info ───────────────────────────────────────────────────────────────────
@@ -273,7 +485,7 @@ def _show_native_folder_dialog(initial_dir: str = "") -> str:
             "  Write-Output $f.SelectedPath "
             "}"
         )
-        res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], capture_output=True, text=True, timeout=30)
+        res = subprocess.run(["powershell", "-NoProfile", "-STA", "-Command", ps_script], capture_output=True, text=True, timeout=30)
         return res.stdout.strip()
     except Exception as e:
         print(f"[Server] Folder dialog error: {e}")
@@ -664,8 +876,29 @@ def _run_render_pipeline_sync(job_id: str, params: dict):
         def on_transcribe_progress(msg: str, pct_delta: int = 0):
             _update_job(job_id, {"percent": min(65, 52 + pct_delta), "message": msg})
 
-        transcript = transcribe_audio(processed_audio, niche=niche, progress_callback=on_transcribe_progress)
-        scenes     = transcript.get("segments", [])
+        transcript = None
+        with _TRANSCRIPTION_LOCK:
+            if processed_audio in _TRANSCRIPTION_CACHE:
+                print(f"[Server] ⚡ Instant Cache Hit: Voiceover already pre-transcribed for {Path(processed_audio).name} (0s wait)!")
+                _update_job(job_id, {"percent": 63, "message": "Instant Cache Hit: Voiceover already pre-transcribed!"})
+                transcript = _TRANSCRIPTION_CACHE[processed_audio]
+
+        if not transcript and processed_audio in _TRANSCRIPTION_TASKS:
+            task_info = _TRANSCRIPTION_TASKS[processed_audio]
+            if task_info.get("status") == "running":
+                _update_job(job_id, {"percent": 55, "message": "Awaiting background pre-transcription completion..."})
+                th = task_info.get("thread")
+                if th and th.is_alive():
+                    th.join(timeout=300)
+                with _TRANSCRIPTION_LOCK:
+                    transcript = _TRANSCRIPTION_CACHE.get(processed_audio)
+
+        if not transcript:
+            transcript = transcribe_audio(processed_audio, niche=niche, progress_callback=on_transcribe_progress)
+            with _TRANSCRIPTION_LOCK:
+                _TRANSCRIPTION_CACHE[processed_audio] = transcript
+
+        scenes = transcript.get("segments", [])
         _update_job(job_id, {"percent": 65, "message": f"Transcribed {len(scenes)} segments. Generating adaptive subtitles..."})
 
         # ─ Step 5: Generate Adaptive Subtitles ───────────────────────────────
