@@ -106,7 +106,10 @@ def _prepare_isolated_fonts_dir(ass_path: str, temp_dir: Path) -> Optional[str]:
 
         if copied > 0:
             return str(isolated_dir)
-        return str(fonts_source_dir)
+        # If no bundled fonts matched, the font is a Windows system font
+        # (e.g. Arial Black, Impact, Segoe UI) or default. Returning None lets libass
+        # resolve system fonts natively without preloading all 12 bundled TTFs into RAM.
+        return None
     except Exception as e:
         print(f"[Renderer] Isolated fonts warning: {e}")
         return None
@@ -260,9 +263,8 @@ def _build_filter_complex(
             filters.append(vis_snippet)
 
     # Step 4: Burn ASS subtitles on top with isolated font directory (avoids 12-font RAM bloat)
-    fonts_dir_target = fonts_dir_override or (str(FONTS_DIR) if (FONTS_DIR and FONTS_DIR.exists()) else str(Path(__file__).parent / "assets" / "fonts"))
-    if fonts_dir_target and Path(fonts_dir_target).exists():
-        fonts_dir_escaped = _ffmpeg_path(str(fonts_dir_target))
+    if fonts_dir_override and Path(fonts_dir_override).exists():
+        fonts_dir_escaped = _ffmpeg_path(str(fonts_dir_override))
         filters.append(
             f"[{comp_stream}]ass=filename='{ass_path_escaped}':fontsdir='{fonts_dir_escaped}'[vout]"
         )

@@ -22,32 +22,19 @@ from .config import find_ffprobe
 VALID_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 
 
-def get_clip_duration(clip_path: str) -> float:
-    """
-    Returns accurate duration of a video clip in seconds using ffprobe.
-    Falls back to 30.0 seconds on any error (conservative estimate).
-    """
-    ffprobe = find_ffprobe()
-    cmd = [
-        ffprobe, "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        str(clip_path)
-    ]
-    try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-        val = res.stdout.strip()
-        if val and val.lower() not in ("n/a", ""):
-            return max(0.5, float(val))
-    except Exception as e:
-        print(f"[LocalPool] ffprobe error for {clip_path}: {e}")
-    return 30.0
+# In-memory probe cache: resolved_path -> dict of {duration, width, height, is_landscape, has_audio, is_pure_video}
+_CLIP_INFO_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
 def probe_clip_info(clip_path: str) -> Dict[str, Any]:
     """
-    Returns media information: width, height, duration, has_audio.
+    Returns media information: width, height, duration, has_audio, is_pure_video.
+    Results are cached in-memory for instant subsequent lookups.
     """
+    p_key = str(Path(clip_path).resolve())
+    if p_key in _CLIP_INFO_CACHE:
+        return _CLIP_INFO_CACHE[p_key]
+
     ffprobe = find_ffprobe()
     cmd = [
         ffprobe, "-v", "error",
@@ -66,7 +53,7 @@ def probe_clip_info(clip_path: str) -> Dict[str, Any]:
         h = int(video_streams[0]["height"]) if video_streams else 1080
         has_audio = any(s.get("codec_type") == "audio" for s in streams)
         is_pure_video = len(streams) == 1 and bool(video_streams)
-        return {
+        info = {
             "duration": max(0.5, dur),
             "width": w,
             "height": h,
@@ -74,9 +61,18 @@ def probe_clip_info(clip_path: str) -> Dict[str, Any]:
             "has_audio": has_audio,
             "is_pure_video": is_pure_video
         }
+        _CLIP_INFO_CACHE[p_key] = info
+        return info
     except Exception as e:
         print(f"[LocalPool] probe error for {clip_path}: {e}")
-        return {"duration": 30.0, "width": 1920, "height": 1080, "is_landscape": True, "has_audio": False, "is_pure_video": True}
+        fallback = {"duration": 30.0, "width": 1920, "height": 1080, "is_landscape": True, "has_audio": False, "is_pure_video": True}
+        _CLIP_INFO_CACHE[p_key] = fallback
+        return fallback
+
+
+def get_clip_duration(clip_path: str) -> float:
+    """Returns accurate duration of a video clip in seconds using cached probe."""
+    return probe_clip_info(clip_path)["duration"]
 
 
 # In-memory scan cache: folder_path -> (timestamp, list_of_clip_paths)
@@ -176,6 +172,7 @@ def select_local_clips(
     wrapped = False
     used_paths: set = set()
     pool_index = 0
+    deferred_clips: List[str] = []
 
     # Dynamic cuts parameters
     is_fast_cuts = (str(pacing_mode).lower() in ("fast_cuts", "dynamic", "fair_use"))
@@ -185,8 +182,12 @@ def select_local_clips(
     # Add 10s safety buffer so video never ends before audio (prevents -shortest cutting off voiceover tail)
     while accumulated_dur < (target_duration_sec + 10.0):
         if pool_index >= len(pool):
-            # Pool exhausted — re-shuffle unused clips for wrap-around
-            remaining = [c for c in all_clips if c not in used_paths]
+            if deferred_clips:
+                pool = deferred_clips.copy()
+                deferred_clips.clear()
+                pool_index = 0
+            else:
+                remaining = [c for c in all_clips if c not in used_paths]
             if not remaining:
                 # All clips used at least once — allow reuse with new shuffle
                 remaining = all_clips.copy()
@@ -202,7 +203,13 @@ def select_local_clips(
         clip_path = pool[pool_index]
         pool_index += 1
 
-        raw_dur = get_clip_duration(clip_path)
+        info = probe_clip_info(clip_path)
+        # Prioritize 1080p landscape clips first to guarantee concat demuxer resolution uniformity
+        if (info.get("width") != 1920 or info.get("height") != 1080) and pool_index < len(pool) and clip_path not in deferred_clips:
+            deferred_clips.append(clip_path)
+            continue
+
+        raw_dur = info.get("duration", 30.0)
 
         # Dynamic cuts: if enabled and clip is longer than min_sec, slice randomly
         if is_fast_cuts and raw_dur > min_sec:
@@ -279,12 +286,44 @@ def prepare_clean_concat_clips(
             return idx, c
 
         info = probe_clip_info(raw_p)
-        if info.get("is_pure_video", False):
-            # Already pure video with no extra audio or data tracks
+        w = info.get("width", 1920)
+        h = info.get("height", 1080)
+        is_pure = info.get("is_pure_video", False)
+
+        # Case 1: Already native 1080p pure video — 100% Zero-Wait pass-through
+        if w == 1920 and h == 1080 and is_pure:
             return idx, c
 
-        # Strip audio and data streams via ultra-fast stream copy (-c:v copy -an -dn)
         p_hash = hashlib.md5(str(Path(raw_p).resolve()).encode('utf-8')).hexdigest()[:12]
+
+        # Case 2: Resolution mismatch (e.g. 720p, 4K, 2.7K) — normalize to 1920x1080 @ 30fps
+        # Uniform 1080p resolution across all clips is mandatory to prevent concat demuxer decoder stalls and OOM crashes!
+        if w != 1920 or h != 1080:
+            norm_file = out_dir / f"norm_1080p_{p_hash}.mp4"
+            norm_path = str(norm_file)
+            if not (norm_file.exists() and norm_file.stat().st_size > 1000):
+                cmd = [
+                    ffmpeg, "-y", "-v", "error",
+                    "-i", raw_p,
+                    "-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=30",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                    "-an", "-dn",
+                    norm_path
+                ]
+                try:
+                    subprocess.run(cmd, capture_output=True, check=True, timeout=60)
+                except Exception as e:
+                    print(f"[LocalPool] Normalization warning for {raw_p}: {e}, using original")
+                    return idx, c
+
+            if is_dict:
+                c_copy = dict(c)
+                c_copy["path"] = norm_path
+                return idx, c_copy
+            else:
+                return idx, norm_path
+
+        # Case 3: Native 1080p but contains extra audio or data streams — fast stream-copy strip (-c:v copy -an -dn, <0.05s)
         clean_file = out_dir / f"pure_v_{p_hash}.mp4"
         clean_path = str(clean_file)
 
