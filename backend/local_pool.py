@@ -180,8 +180,8 @@ def select_local_clips(
     min_sec = max(2.0, float(min_clip_sec))
     max_sec = max(min_sec + 0.5, float(max_clip_sec))
 
-    # Add 4s safety buffer so video never ends before audio (prevents -shortest cutting off voiceover tail)
-    while accumulated_dur < (target_duration_sec + 4.0):
+    # Add 10s safety buffer so video never ends before audio (prevents -shortest cutting off voiceover tail)
+    while accumulated_dur < (target_duration_sec + 10.0):
         if pool_index >= len(pool):
             # Pool exhausted — re-shuffle unused clips for wrap-around
             remaining = [c for c in all_clips if c not in used_paths]

@@ -129,15 +129,13 @@ def _build_filter_complex(
     # Build filter graph
     filters = []
 
-    # Strictly monotonic frame-based PTS calculation:
-    eff_source_fps = 30.0 * max(0.1, float(speed_multiplier))
-
-    # Step 1: Standardize stock footage to 1920x1080 (16:9 square pixels), apply slow-mo, then smooth to 30fps
+    # Step 1: Standardize stock footage to 1920x1080 (16:9 square pixels), normalize to 30fps, apply slow-mo smoothly
     bg_subfilters = [
         f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=increase:flags=fast_bilinear",
         f"crop={canvas_w}:{canvas_h}",
         "setsar=1",
-        f"setpts=N/({eff_source_fps:.4f}*TB)",
+        "fps=30",
+        f"setpts=PTS/{max(0.1, float(speed_multiplier)):.4f}",
         "fps=30"
     ]
     if blur_radius > 0:
