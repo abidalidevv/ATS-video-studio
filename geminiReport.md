@@ -186,6 +186,9 @@ ATS transforms this into a single-click, **Zero-Wait Single-Pass GPU Pipeline**:
 | `/api/settings` | GET / POST | JSON settings dict | Persisted settings | Reads/writes user configuration in `settings.json`. |
 | `/api/broll-preview` | POST | FormData (`folder_path`) | `{clip_count, total_duration, preview_url}` | Probes local B-roll directory, returns clip statistics, and serves first clip stream for frontend preview. |
 | `/api/chroma/pick-color` | POST | `{video_path, time_sec, x, y}` | `{hex, rgb, frame_url}` | Extracts video frame at specific timestamp and samples exact pixel RGB value for chroma keying. |
+| `/api/logs/open` | POST | None | `{success, path}` | Opens the engine log file (`ats_studio.log`) in default Windows editor (Notepad). |
+| `/api/logs/locate` | POST | None | `{success, path}` | Highlights and locates the log file in Windows File Explorer. |
+| `/api/logs/recent` | GET | `lines: int` (default 150) | `{logs, total_lines, path}` | Returns the most recent 150 lines of stdout/stderr logs for in-app diagnostic preview. |
 
 ### B. `backend/fast_renderer.py`
 | Function | Parameters | Return | Description |

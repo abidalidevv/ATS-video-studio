@@ -166,9 +166,11 @@ ATSAuthor/
 
 ## 📖 Complete Documentation & Manuals
 
-* **Offline Interactive Manual**: Open [documentation.html](file:///c:/Users/Abid/Desktop/ATSAuthor/documentation.html) directly in any browser (no server needed).
-* **In-App Studio Documentation**: Open [frontend/docs.html](file:///c:/Users/Abid/Desktop/ATSAuthor/frontend/docs.html) or click the **📖 Docs** button in the studio header (`http://127.0.0.1:8766/static/docs.html`).
-* **Master System Brain & API Registry**: View [brain.md](file:///c:/Users/Abid/Desktop/ATSAuthor/brain.md) for full architectural plans, active API keys, endpoints, and JSON blocks.
+* **🏛️ Master Architectural Audit Report**: See [geminiReport.md](file:///c:/Users/Abid/Desktop/ATSAuthor/geminiReport.md) for complete technical architecture, mathematical foundations, module/function index, live hardware benchmarks, and Claude peer-review questions.
+* **📖 In-App Offline Documentation Modal**: Click the **📖 Docs** button in the studio header to open the interactive user guide directly inside the application window (no external browser or localhost link required).
+* **🌐 Offline Standalone Manual**: Open [documentation.html](file:///c:/Users/Abid/Desktop/ATSAuthor/documentation.html) directly in any browser for an offline, standalone reference.
+* **🧠 Master System Brain & Roadmap**: View [brain.md](file:///c:/Users/Abid/Desktop/ATSAuthor/brain.md) for architectural milestones, active API keys registry, endpoints, and data contracts.
+* **📋 Persistent Logs**: View `data/logs/ats_studio.log` or click **"Open in Notepad"** in Settings for real-time engine diagnostics and FFmpeg progress.
 
 ---
 

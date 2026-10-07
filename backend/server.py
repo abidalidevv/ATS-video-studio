@@ -20,7 +20,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import (
     load_settings, save_settings, TEMP_DIR, OUTPUT_DIR,
-    AVATARS_DIR, FRONTEND_DIR, detect_gpu_encoder, get_encoder_params, find_ffmpeg
+    AVATARS_DIR, FRONTEND_DIR, detect_gpu_encoder, get_encoder_params, find_ffmpeg,
+    LOG_FILE, LOGS_DIR
 )
 
 app = FastAPI(title="Avatar Storyteller Engine", version="1.0.0")
@@ -1068,3 +1069,46 @@ async def open_output_folder():
 async def get_caption_presets():
     from .adaptive_subtitles import get_available_presets
     return get_available_presets()
+
+
+# ── System Logs & Diagnostics ──────────────────────────────────────────────────
+@app.post("/api/logs/open")
+async def open_log_file():
+    """Opens the persistent studio log file directly in default Windows editor (Notepad)."""
+    try:
+        if not LOG_FILE.exists():
+            LOG_FILE.write_text("[Info] ATS Video Studio Log Initialized\n", encoding="utf-8")
+        os.startfile(str(LOG_FILE))
+        return {"success": True, "path": str(LOG_FILE)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/logs/locate")
+async def locate_log_file():
+    """Selects and locates the log file in Windows Explorer."""
+    try:
+        if not LOG_FILE.exists():
+            LOG_FILE.write_text("[Info] ATS Video Studio Log Initialized\n", encoding="utf-8")
+        subprocess.run(f'explorer /select,"{str(LOG_FILE)}"', shell=True)
+        return {"success": True, "path": str(LOG_FILE)}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/logs/recent")
+async def get_recent_logs(lines: int = 150):
+    """Returns the most recent log lines for in-app diagnostic viewing."""
+    try:
+        if not LOG_FILE.exists():
+            return {"logs": ["[Info] Log file has not been created yet."], "total_lines": 0, "path": str(LOG_FILE)}
+        with open(LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+        return {
+            "logs": all_lines[-lines:],
+            "total_lines": len(all_lines),
+            "path": str(LOG_FILE)
+        }
+    except Exception as e:
+        return {"logs": [f"[Error reading logs] {e}"], "total_lines": 0, "path": str(LOG_FILE)}
+

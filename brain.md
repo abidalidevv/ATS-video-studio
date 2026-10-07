@@ -29,6 +29,11 @@ All architectural phases, UI controls, live studio previews, audio visualizers, 
 - [x] ~~**19. Smart Background Pre-Transcription Engine (`backend/server.py` & `frontend/app.js`)**: Automatically triggers parallel Whisper Large v3 voiceover transcription the instant audio is selected, caching segments in memory so final render has 0.0s transcription wait.~~
 - [x] ~~**20. Interactive Groq Ping Test & Linked Keys UI (`frontend/` & `backend/server.py`)**: Real-time roundtrip latency verification (`/api/system/ping-groq`), persistent linked key status display, and non-blocking input modal.~~
 - [x] ~~**21. Hardware QSV Bitrate & Memory Bus Tuning (`backend/config.py`)**: Tuned `-b:v 5M -maxrate 7M -bufsize 10M` to eliminate memory bus bottlenecks on Intel integrated graphics.~~
+- [x] ~~**22. High-Speed Production Defaults**: Blur=0 (doubles render speed from 39 FPS to 81+ FPS), Visualizer=OFF by default, Pitch=0/Speed=1.0 (Zero-DSP bypass), and Background Music 100% skipped when omitted.~~
+- [x] ~~**23. In-Window Offline Documentation Modal (`frontend/index.html` & `frontend/app.js`)**: Replaced external browser navigation with an in-window modal popup hosting an embedded iframe of the offline docs, preventing localhost URL exposure.~~
+- [x] ~~**24. Persistent Engine Logging & Diagnostics (`backend/config.py`, `backend/server.py` & `frontend/`)**: Direct stdout/stderr capture to `data/logs/ats_studio.log`, with 1-click "Open in Notepad", "Locate in Explorer", and collapsible in-app live log viewer.~~
+- [x] ~~**25. Universal Cross-User Output Path Portability (`backend/config.py`)**: Automated self-correction preventing file path errors when sharing portable builds across different Windows user accounts.~~
+- [x] ~~**26. Master Architectural Audit Report (`geminiReport.md`)**: Complete technical manual, module/function index, mathematical foundations, benchmark matrix, and 10 peer-review audit questions for Claude.~~
 
 ---
 

@@ -1634,6 +1634,73 @@ function reloadDocsIframe() {
   }
 }
 
+// ─ Engine Log File Handlers ──────────────────────────────────────────────────
+async function openLogFileInEditor() {
+  try {
+    const res = await fetch(`${API}/api/logs/open`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      showToast('📄 Opened log file in Notepad', 'success');
+    } else {
+      showToast('⚠️ Could not open log: ' + (data.error || 'Unknown error'), 'error');
+    }
+  } catch (e) {
+    showToast('Failed to open log: ' + e.message, 'error');
+  }
+}
+
+async function locateLogFileInExplorer() {
+  try {
+    const res = await fetch(`${API}/api/logs/locate`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      showToast('📂 Located log file in File Explorer', 'success');
+    } else {
+      showToast('⚠️ Could not locate log: ' + (data.error || 'Unknown error'), 'error');
+    }
+  } catch (e) {
+    showToast('Failed to locate log: ' + e.message, 'error');
+  }
+}
+
+let _isLogViewerOpen = false;
+function toggleLogViewer() {
+  const viewer = document.getElementById('inline-log-viewer');
+  const btn = document.getElementById('btn-toggle-logs');
+  if (!viewer) return;
+  _isLogViewerOpen = !_isLogViewerOpen;
+  viewer.style.display = _isLogViewerOpen ? 'block' : 'none';
+  if (btn) btn.textContent = _isLogViewerOpen ? '🙈 Hide Logs' : '👁️ View Logs';
+  if (_isLogViewerOpen) {
+    fetchRecentLogs();
+  }
+}
+
+async function fetchRecentLogs() {
+  const pre = document.getElementById('recent-logs-pre');
+  const pathLabel = document.getElementById('log-file-path-label');
+  if (pre) pre.textContent = 'Fetching latest engine logs...';
+  try {
+    const res = await fetch(`${API}/api/logs/recent?lines=150`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (pathLabel && data.path) {
+      pathLabel.textContent = data.path;
+    }
+    if (pre) {
+      if (data.logs && data.logs.length > 0) {
+        pre.textContent = data.logs.join('');
+        pre.scrollTop = pre.scrollHeight;
+      } else {
+        pre.textContent = '[No logs recorded yet.]';
+      }
+    }
+  } catch (e) {
+    if (pre) pre.textContent = '[Failed to fetch logs: ' + e.message + ']';
+  }
+}
+
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // System Health & Storage Guard Modal

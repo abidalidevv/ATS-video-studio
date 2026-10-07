@@ -35,9 +35,64 @@ FRONTEND_DIR = BUNDLE_DIR / "frontend"
 if not FRONTEND_DIR.exists():
     FRONTEND_DIR = BASE_DIR / "frontend"
 
+LOGS_DIR     = DATA_DIR / "logs"
+LOG_FILE     = LOGS_DIR / "ats_studio.log"
+
 # Ensure directories exist
-for d in [DATA_DIR, OUTPUT_DIR, TEMP_DIR, AVATARS_DIR, BIN_DIR]:
+for d in [DATA_DIR, OUTPUT_DIR, TEMP_DIR, AVATARS_DIR, BIN_DIR, LOGS_DIR]:
     d.mkdir(parents=True, exist_ok=True)
+
+
+class LogTee:
+    """Tees stdout/stderr to both original console and persistent ats_studio.log."""
+    def __init__(self, original_stream, log_file: Path):
+        self.original_stream = original_stream
+        self.log_file = log_file
+
+    def write(self, data):
+        if self.original_stream:
+            try:
+                self.original_stream.write(data)
+                self.original_stream.flush()
+            except Exception:
+                pass
+        if data:
+            try:
+                with open(self.log_file, "a", encoding="utf-8", errors="replace") as f:
+                    f.write(data)
+            except Exception:
+                pass
+
+    def flush(self):
+        if self.original_stream:
+            try:
+                self.original_stream.flush()
+            except Exception:
+                pass
+
+
+_logging_initialized = False
+
+def setup_file_logging():
+    global _logging_initialized
+    if _logging_initialized:
+        return
+    _logging_initialized = True
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    if not LOG_FILE.exists():
+        try:
+            with open(LOG_FILE, "w", encoding="utf-8") as f:
+                f.write("=== ATS Video Studio Engine Log Initialized ===\n")
+        except Exception:
+            pass
+    # Avoid double wrapping if already a LogTee
+    if not isinstance(sys.stdout, LogTee):
+        sys.stdout = LogTee(sys.stdout, LOG_FILE)
+    if not isinstance(sys.stderr, LogTee):
+        sys.stderr = LogTee(sys.stderr, LOG_FILE)
+
+# Automatically enable file logging on import
+setup_file_logging()
 
 
 # ── Default Settings ──────────────────────────────────────────────────────────
