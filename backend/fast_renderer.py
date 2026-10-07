@@ -61,6 +61,57 @@ def _build_avatar_overlay_coords(
     return f"x={x}:y={y}"
 
 
+def _prepare_isolated_fonts_dir(ass_path: str, temp_dir: Path) -> Optional[str]:
+    """
+    Scans the ASS subtitle file to find which fonts are actually used.
+    Copies only the needed fonts into an isolated temp directory to prevent
+    libass from pre-loading and indexing all 12 heavy fonts into RAM.
+    """
+    try:
+        ass_p = Path(ass_path)
+        if not ass_p.exists():
+            return None
+
+        fonts_source_dir = FONTS_DIR if (FONTS_DIR and FONTS_DIR.exists()) else (Path(__file__).parent / "assets" / "fonts")
+        if not fonts_source_dir.exists():
+            return None
+
+        # Find font names from Style lines in the ASS file
+        used_fonts = set()
+        with open(ass_p, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                if line.startswith("Style:"):
+                    parts = line.split(",")
+                    if len(parts) >= 2:
+                        font_name = parts[1].strip().lower()
+                        if font_name:
+                            used_fonts.add(font_name)
+
+        if not used_fonts:
+            return str(fonts_source_dir)
+
+        isolated_dir = temp_dir / "isolated_fonts"
+        isolated_dir.mkdir(parents=True, exist_ok=True)
+
+        copied = 0
+        import shutil
+        for f_file in fonts_source_dir.iterdir():
+            if f_file.suffix.lower() in (".ttf", ".otf"):
+                stem_lower = f_file.stem.lower()
+                if any(uf in stem_lower or stem_lower in uf for uf in used_fonts):
+                    target = isolated_dir / f_file.name
+                    if not target.exists():
+                        shutil.copy2(str(f_file), str(target))
+                    copied += 1
+
+        if copied > 0:
+            return str(isolated_dir)
+        return str(fonts_source_dir)
+    except Exception as e:
+        print(f"[Renderer] Isolated fonts warning: {e}")
+        return None
+
+
 def _build_filter_complex(
     blur_radius: int,
     dark_tint: float,
@@ -89,7 +140,8 @@ def _build_filter_complex(
     chroma_similarity: float = 0.25,
     chroma_blend: float = 0.08,
     target_vis_w: int = 400,
-    target_vis_h: int = 200
+    target_vis_h: int = 200,
+    fonts_dir_override: Optional[str] = None
 ) -> str:
     """
     Builds the single-pass FFmpeg filter_complex string.
@@ -129,12 +181,11 @@ def _build_filter_complex(
     # Build filter graph
     filters = []
 
-    # Step 1: Standardize stock footage to 1920x1080 (16:9 square pixels), normalize to 30fps, apply slow-mo smoothly
+    # Step 1: Standardize stock footage to 1920x1080 (16:9 square pixels), apply slow-mo, single 30fps quantization
     bg_subfilters = [
         f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=increase:flags=fast_bilinear",
         f"crop={canvas_w}:{canvas_h}",
         "setsar=1",
-        "fps=30",
         f"setpts=PTS/{max(0.1, float(speed_multiplier)):.4f}",
         "fps=30"
     ]
@@ -208,10 +259,10 @@ def _build_filter_complex(
             )
             filters.append(vis_snippet)
 
-    # Step 4: Burn ASS subtitles on top with local fontsdir support
-    fonts_dir = FONTS_DIR if (FONTS_DIR and FONTS_DIR.exists()) else (Path(__file__).parent / "assets" / "fonts")
-    if fonts_dir.exists():
-        fonts_dir_escaped = _ffmpeg_path(str(fonts_dir))
+    # Step 4: Burn ASS subtitles on top with isolated font directory (avoids 12-font RAM bloat)
+    fonts_dir_target = fonts_dir_override or (str(FONTS_DIR) if (FONTS_DIR and FONTS_DIR.exists()) else str(Path(__file__).parent / "assets" / "fonts"))
+    if fonts_dir_target and Path(fonts_dir_target).exists():
+        fonts_dir_escaped = _ffmpeg_path(str(fonts_dir_target))
         filters.append(
             f"[{comp_stream}]ass=filename='{ass_path_escaped}':fontsdir='{fonts_dir_escaped}'[vout]"
         )
@@ -360,6 +411,9 @@ def render_avatar_video(
                 print(f"[Renderer] ⚠️ Visualizer card generation failed: {e}")
                 use_visualizer = False
 
+    # Prepare isolated fonts directory for libass (loads only active font into RAM)
+    isolated_fonts_dir = _prepare_isolated_fonts_dir(ass_subtitle_path, TEMP_DIR)
+
     # Build the filter complex
     filter_complex = _build_filter_complex(
         blur_radius=blur_radius,
@@ -387,7 +441,8 @@ def render_avatar_video(
         chroma_similarity=chroma_similarity,
         chroma_blend=chroma_blend,
         target_vis_w=target_vis_w,
-        target_vis_h=target_vis_h
+        target_vis_h=target_vis_h,
+        fonts_dir_override=isolated_fonts_dir
     )
     print(f"[Renderer] Filter complex:\n    {filter_complex}")
 
@@ -409,10 +464,18 @@ def render_avatar_video(
         elif visualizer_card_path:
             cmd_inputs.extend(["-i", visualizer_card_path])
 
+    # Safe multithreading: on <= 12GB RAM systems, 2 threads prevents unbounded parallel filter buffering
+    try:
+        import psutil
+        total_ram_gb = psutil.virtual_memory().total / (1024 ** 3)
+    except Exception:
+        total_ram_gb = 8.0
+    safe_threads = 2 if total_ram_gb <= 12.0 else 4
+
     # Build complete FFmpeg command
     cmd = [
         ffmpeg, "-y",
-        "-threads", "0",
+        "-threads", str(safe_threads),
         *cmd_inputs,
         # Filter graph
         "-filter_complex", filter_complex,
@@ -427,6 +490,7 @@ def render_avatar_video(
         # Audio with monotonic A/V sync resampler (guarantees zero drift over 2hr+ timeline)
         "-af", "aresample=async=1000",
         "-c:a", "aac", "-b:a", "192k",
+        "-max_muxing_queue_size", "1024",
         # Duration: stop when voiceover ends
         "-shortest",
         # Aspect Ratio & FPS

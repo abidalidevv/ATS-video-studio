@@ -65,16 +65,18 @@ def probe_clip_info(clip_path: str) -> Dict[str, Any]:
         w = int(video_streams[0]["width"]) if video_streams else 1920
         h = int(video_streams[0]["height"]) if video_streams else 1080
         has_audio = any(s.get("codec_type") == "audio" for s in streams)
+        is_pure_video = len(streams) == 1 and bool(video_streams)
         return {
             "duration": max(0.5, dur),
             "width": w,
             "height": h,
             "is_landscape": w >= h,
-            "has_audio": has_audio
+            "has_audio": has_audio,
+            "is_pure_video": is_pure_video
         }
     except Exception as e:
         print(f"[LocalPool] probe error for {clip_path}: {e}")
-        return {"duration": 30.0, "width": 1920, "height": 1080, "is_landscape": True, "has_audio": False}
+        return {"duration": 30.0, "width": 1920, "height": 1080, "is_landscape": True, "has_audio": False, "is_pure_video": True}
 
 
 # In-memory scan cache: folder_path -> (timestamp, list_of_clip_paths)
@@ -249,15 +251,76 @@ def prepare_clean_concat_clips(
     progress_callback=None
 ) -> List[Any]:
     """
-    Zero-Wait Ultra-Fast Path: Returns clips instantly without CPU software re-encoding.
-    FFmpeg concat demuxer natively supports inpoint and outpoint directives, while the
-    single-pass hardware filtergraph handles all resolution scaling and aspect ratio cropping.
-    Eliminates 8-15 minutes of redundant CPU pre-encoding and gigabytes of temp disk clutter.
+    Sanitizes B-Roll clips for the concat demuxer:
+    - Pure video only (strips audio/data/timecode tracks via stream-copy in <0.05s).
+    - Clips already pure video are passed through instantly (0 latency).
+    - Preserves inpoint/outpoint slicing metadata without re-encoding.
+    - Prevents FFmpeg concat demuxer stream-count mismatches, non-monotonic DTS, and RAM leaks.
     """
-    if progress_callback:
-        progress_callback(f"Prepared {len(clips)} B-Roll clips instantly (Zero-Wait mode)...")
-    print(f"[LocalPool] ⚡ Zero-Wait Fast Path: Prepared {len(clips)} B-Roll clips in 0.001s for hardware concat demuxer.")
-    return clips
+    import hashlib
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from .config import find_ffmpeg
+    ffmpeg = find_ffmpeg()
+    out_dir = Path(work_dir) / "clean_broll"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    cleaned_clips = [None] * len(clips)
+    max_workers = min(4, max(1, os.cpu_count() or 4))
+
+    def _clean_worker(idx: int, c: Any):
+        if isinstance(c, dict):
+            raw_p = c.get("path", "")
+            is_dict = True
+        else:
+            raw_p = str(c)
+            is_dict = False
+
+        if not raw_p or not os.path.exists(raw_p):
+            return idx, c
+
+        info = probe_clip_info(raw_p)
+        if info.get("is_pure_video", False):
+            # Already pure video with no extra audio or data tracks
+            return idx, c
+
+        # Strip audio and data streams via ultra-fast stream copy (-c:v copy -an -dn)
+        p_hash = hashlib.md5(str(Path(raw_p).resolve()).encode('utf-8')).hexdigest()[:12]
+        clean_file = out_dir / f"pure_v_{p_hash}.mp4"
+        clean_path = str(clean_file)
+
+        if not (clean_file.exists() and clean_file.stat().st_size > 1000):
+            cmd = [
+                ffmpeg, "-y", "-v", "error",
+                "-i", raw_p,
+                "-c:v", "copy",
+                "-an", "-dn",
+                clean_path
+            ]
+            try:
+                subprocess.run(cmd, capture_output=True, check=True, timeout=15)
+            except Exception as e:
+                print(f"[LocalPool] Stream copy warning for {raw_p}: {e}, using original")
+                return idx, c
+
+        if is_dict:
+            c_copy = dict(c)
+            c_copy["path"] = clean_path
+            return idx, c_copy
+        else:
+            return idx, clean_path
+
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures = [ex.submit(_clean_worker, i, c) for i, c in enumerate(clips)]
+        done_cnt = 0
+        for f in as_completed(futures):
+            i, cl = f.result()
+            cleaned_clips[i] = cl
+            done_cnt += 1
+            if progress_callback and (done_cnt % 5 == 0 or done_cnt == len(clips)):
+                progress_callback(f"Sanitized B-Roll clips {done_cnt}/{len(clips)} (pure video mode)...")
+
+    print(f"[LocalPool] ⚡ Sanitized {len(cleaned_clips)} B-Roll clips in parallel (pure video concat mode).")
+    return cleaned_clips
 
 
 def write_concat_list(clips: List[Any], output_path: str) -> str:
