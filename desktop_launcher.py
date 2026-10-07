@@ -161,7 +161,8 @@ def main():
             host=HOST,
             port=PORT,
             log_level="warning",
-            loop="asyncio"
+            loop="asyncio",
+            use_colors=False
         )
         server = uvicorn.Server(config)
         server.run()

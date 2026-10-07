@@ -76,7 +76,7 @@ echo [OK] Python detected:
 echo.
 
 :: 3. Check and install dependencies if needed
-%PY_EXE% -c "import fastapi, uvicorn, PIL" >nul 2>&1
+%PY_EXE% -c "import fastapi, uvicorn, PIL, webview, groq" >nul 2>&1
 if %errorlevel% neq 0 (
     echo [Setup] Installing required dependencies from requirements.txt...
     %PY_EXE% -m pip install -r requirements.txt

@@ -10,6 +10,8 @@ data/output/*
 !data/output/.gitkeep
 data/avatars/*
 !data/avatars/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
 
 # Large media
 *.mp4

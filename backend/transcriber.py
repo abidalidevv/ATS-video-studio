@@ -237,7 +237,8 @@ def _transcribe_chunk_worker(
     key_order = [keys_pool[(chunk_idx + i) % len(keys_pool)] for i in range(len(keys_pool))]
 
     last_error = None
-    for key in key_order:
+    # Pass 1: Try keys in round-robin order with backoff on 429
+    for attempt, key in enumerate(key_order):
         try:
             print(f"[Transcriber] 📡 Worker processing slice {chunk_idx + 1} ({offset_sec/60:.1f}m - {(offset_sec+chunk_dur)/60:.1f}m) via key {key[:8]}...")
             res = _transcribe_groq(chunk_path, key, chunk_dur, time_offset=offset_sec)
@@ -245,10 +246,34 @@ def _transcribe_chunk_worker(
             return (chunk_idx, res)
         except Exception as e:
             last_error = e
-            print(f"[Transcriber] ⚠️ Slice {chunk_idx + 1} failed on key {key[:8]}... ({e}), rotating to next key...")
-            time.sleep(0.4)
+            err_str = str(e).lower()
+            is_rate_limit = "429" in err_str or "rate limit" in err_str
+            backoff = min(4.0, 1.0 * (attempt + 1)) if is_rate_limit else 0.4
+            print(f"[Transcriber] ⚠️ Slice {chunk_idx + 1} on key {key[:8]}... failed: {e}. Backing off {backoff:.1f}s...")
+            time.sleep(backoff)
 
-    print(f"[Transcriber] ❌ Slice {chunk_idx + 1} failed across all {len(keys_pool)} keys: {last_error}. Generating fallback slice.")
+    # Pass 2: If all initial keys failed (rate-limited / invalid), check for fresh key in Settings!
+    print(f"[Transcriber] ⚠️ Slice {chunk_idx + 1}: all {len(keys_pool)} keys failed ({last_error}). Checking Settings for updated key (15s window)...")
+    for wait_tick in range(10):  # Check Settings every 1.5s for 15 seconds
+        time.sleep(1.5)
+        fresh_settings = load_settings()
+        fresh_keys = fresh_settings.get("groq_api_keys") or (
+            [fresh_settings.get("groq_api_key")] if fresh_settings.get("groq_api_key") else []
+        )
+        fresh_keys = [k.strip() for k in fresh_keys if k and k.strip()]
+        new_keys = [k for k in fresh_keys if k not in keys_pool]
+        if new_keys:
+            print(f"[Transcriber] 🔄 Fresh Groq key detected from Settings: {new_keys[0][:8]}... Retrying slice {chunk_idx + 1}!")
+            for nkey in new_keys:
+                try:
+                    res = _transcribe_groq(chunk_path, nkey, chunk_dur, time_offset=offset_sec)
+                    print(f"[Transcriber] ✅ Slice {chunk_idx + 1} transcribed successfully with fresh key!")
+                    return (chunk_idx, res)
+                except Exception as ne:
+                    last_error = ne
+                    time.sleep(1.0)
+
+    print(f"[Transcriber] ❌ Slice {chunk_idx + 1} failed across all keys: {last_error}. Generating fallback slice.")
     fallback = _generate_fallback_transcription(chunk_path, chunk_dur, niche, time_offset=offset_sec)
     return (chunk_idx, fallback)
 
@@ -369,12 +394,41 @@ def transcribe_audio(
     send_path, is_temp = _prepare_audio_for_whisper(audio_path)
     result = None
     try:
-        for groq_key in gr_keys:
+        # Pass 1: Try all configured keys with backoff
+        for attempt, groq_key in enumerate(gr_keys):
             try:
                 result = _transcribe_groq(send_path, groq_key, duration)
                 break
             except Exception as e:
-                print(f"[Transcriber] Groq key {groq_key[:8]}... failed: {e}, trying next key...")
+                err_str = str(e).lower()
+                is_rate_limit = "429" in err_str or "rate limit" in err_str
+                backoff = min(4.0, 1.0 * (attempt + 1)) if is_rate_limit else 0.4
+                print(f"[Transcriber] Groq key {groq_key[:8]}... failed: {e}. Backing off {backoff:.1f}s...")
+                time.sleep(backoff)
+
+        # Pass 2: If all initial keys failed, check for updated key from Settings!
+        if result is None:
+            if progress_callback:
+                progress_callback("⚠️ Groq rate limit reached! Checking Settings for updated key...", 0)
+            print("[Transcriber] All initial Groq keys failed in single-shot. Checking Settings for updated key (15s window)...")
+            for _ in range(10):  # 15s window
+                time.sleep(1.5)
+                fresh_settings = load_settings()
+                fresh_keys = fresh_settings.get("groq_api_keys") or (
+                    [fresh_settings.get("groq_api_key")] if fresh_settings.get("groq_api_key") else []
+                )
+                fresh_keys = [k.strip() for k in fresh_keys if k and k.strip()]
+                new_keys = [k for k in fresh_keys if k not in gr_keys]
+                if new_keys:
+                    print(f"[Transcriber] 🔄 Fresh Groq key detected from Settings: {new_keys[0][:8]}... Retrying!")
+                    for nkey in new_keys:
+                        try:
+                            result = _transcribe_groq(send_path, nkey, duration)
+                            break
+                        except Exception as ne:
+                            print(f"[Transcriber] Fresh key {nkey[:8]}... failed: {ne}")
+                    if result is not None:
+                        break
     finally:
         if is_temp and os.path.exists(send_path):
             try:

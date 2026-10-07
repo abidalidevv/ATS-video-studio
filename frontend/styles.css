@@ -163,8 +163,8 @@ body {
   padding: 0 var(--sp-xl);
   height: 64px;
   background: rgba(10, 10, 18, 0.9);
-  backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border-subtle);
   position: sticky;
   top: 0;
@@ -235,6 +235,7 @@ body {
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   margin-bottom: var(--sp-xl);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 }
 
@@ -267,8 +268,8 @@ body {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
-  backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
   overflow: hidden;
   transition: var(--transition-base);
 }
@@ -586,6 +587,7 @@ body {
 
 input[type="range"] {
   -webkit-appearance: none;
+  appearance: none;
   width: 100%;
   height: 4px;
   background: var(--bg-elevated);
@@ -697,6 +699,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
   border: none;
   transition: var(--transition-fast);
   white-space: nowrap;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -911,6 +914,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
   align-items: center;
   justify-content: center;
   min-height: 84px;
+  -webkit-user-select: none;
   user-select: none;
   position: relative;
 }
@@ -1229,8 +1233,8 @@ input[type="range"]::-webkit-slider-thumb:hover {
   inset: 0;
   z-index: 200;
   background: rgba(0,0,0,0.7);
-  backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   padding: var(--sp-2xl);
   overflow-y: auto;
 }
@@ -1758,6 +1762,7 @@ select.text-input {
   overflow: hidden;
   background: #000;
   border-radius: var(--radius-lg);
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -1847,6 +1852,7 @@ select.text-input {
 /* ── Interactive Draggable Elements (General) ──────────────────────────────── */
 .stage-element {
   position: absolute;
+  -webkit-user-select: none;
   user-select: none;
   touch-action: none;
   box-sizing: border-box;
@@ -2144,8 +2150,8 @@ select.text-input {
   justify-content: space-between;
   gap: var(--sp-xs);
   background: rgba(15, 15, 26, 0.88);
-  backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(124, 58, 237, 0.15);
   border-radius: var(--radius-xl);
@@ -2334,6 +2340,7 @@ select.text-input {
   align-items: center;
   gap: 12px;
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
 }
 

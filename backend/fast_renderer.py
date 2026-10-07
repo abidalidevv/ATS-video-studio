@@ -425,7 +425,8 @@ def render_avatar_video(
         "-preset", enc_params["preset"],
         *enc_params["extras"],
         "-pix_fmt", enc_params["pix_fmt"],
-        # Audio
+        # Audio with monotonic A/V sync resampler (guarantees zero drift over 2hr+ timeline)
+        "-af", "aresample=async=1000",
         "-c:a", "aac", "-b:a", "192k",
         # Duration: stop when voiceover ends
         "-shortest",

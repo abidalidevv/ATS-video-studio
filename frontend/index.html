@@ -99,7 +99,7 @@
 
         <!-- Compact Voiceover Drop Zone (shows selected file INSIDE the zone) -->
         <div class="drop-zone" id="voiceover-dropzone" ondrop="handleVoiceoverDrop(event)" ondragover="onDragOver(event, this)" ondragleave="onDragLeave(this)">
-          <input type="file" id="voiceover-file-input" accept=".mp3,.wav,.m4a,.aac,.ogg,.flac" onclick="this.value=null" onchange="handleVoiceoverFile(this.files[0])" />
+          <input type="file" id="voiceover-file-input" title="Voiceover audio file" aria-label="Upload Voiceover Audio" accept=".mp3,.wav,.m4a,.aac,.ogg,.flac" onclick="this.value=null" onchange="handleVoiceoverFile(this.files[0])" />
           
           <!-- State A: Empty Prompt -->
           <div class="drop-content-layout" id="voiceover-prompt">
@@ -171,7 +171,7 @@
           </div>
 
           <div class="drop-zone" id="bgm-dropzone" ondrop="handleBgmDrop(event)" ondragover="onDragOver(event, this)" ondragleave="onDragLeave(this)">
-            <input type="file" id="bgm-file-input" accept=".mp3,.wav,.m4a,.aac,.ogg,.flac" onclick="this.value=null" onchange="handleBgmFile(this.files[0])" />
+            <input type="file" id="bgm-file-input" title="Background music audio file" aria-label="Upload Background Music" accept=".mp3,.wav,.m4a,.aac,.ogg,.flac" onclick="this.value=null" onchange="handleBgmFile(this.files[0])" />
             
             <!-- State A: Empty Prompt -->
             <div class="drop-content-layout" id="bgm-prompt">
@@ -260,7 +260,7 @@
             <!-- Compact Avatar Upload Drop Zone -->
             <div class="drop-zone" id="avatar-dropzone"
                  ondrop="handleAvatarDrop(event)" ondragover="onDragOver(event, this)" ondragleave="onDragLeave(this)">
-              <input type="file" id="avatar-file-input" accept=".png,.jpg,.jpeg,.webp" onclick="this.value=null" onchange="handleAvatarFile(this.files[0])" />
+              <input type="file" id="avatar-file-input" title="Author portrait cutout image" aria-label="Upload Author Portrait" accept=".png,.jpg,.jpeg,.webp" onclick="this.value=null" onchange="handleAvatarFile(this.files[0])" />
               
               <!-- State A: Empty Prompt -->
               <div class="drop-content-layout" id="avatar-prompt">
@@ -595,94 +595,94 @@
           <span style="font-size:0.72rem;color:var(--text-muted);">18 CapCut Viral &amp; Documentary Styles</span>
         </div>
 
-        <div class="preset-grid-18" id="preset-grid" role="radiogroup" aria-label="Caption preset">
+        <div class="preset-grid-18" id="preset-grid" role="group" aria-label="Caption preset">
           <!-- 1. CapCut Viral Yellow -->
-          <div class="preset-card-visual active" data-preset="capcut_yellow" onclick="selectPreset(this)" tabindex="0" aria-pressed="true" title="CapCut Viral Yellow">
+          <div class="preset-card-visual active" role="button" data-preset="capcut_yellow" onclick="selectPreset(this)" tabindex="0" aria-pressed="true" title="CapCut Viral Yellow">
             <div class="preset-aa-preview"><span class="aa-capcut">Aa!</span></div>
             <div class="preset-name">CapCut Viral</div>
           </div>
           <!-- 2. Hormozi Green -->
-          <div class="preset-card-visual" data-preset="hormozi_green" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Hormozi Punch Green">
+          <div class="preset-card-visual" role="button" data-preset="hormozi_green" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Hormozi Punch Green">
             <div class="preset-aa-preview"><span class="aa-hormozi">Aa!</span></div>
             <div class="preset-name">Hormozi</div>
           </div>
           <!-- 3. MrBeast Gold -->
-          <div class="preset-card-visual" data-preset="mrbeast_punch" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="MrBeast Punchy Gold">
+          <div class="preset-card-visual" role="button" data-preset="mrbeast_punch" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="MrBeast Punchy Gold">
             <div class="preset-aa-preview"><span class="aa-mrbeast">AA!</span></div>
             <div class="preset-name">MrBeast</div>
           </div>
           <!-- 4. Ali Abdaal -->
-          <div class="preset-card-visual" data-preset="ali_abdaal" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Ali Abdaal Aesthetic">
+          <div class="preset-card-visual" role="button" data-preset="ali_abdaal" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Ali Abdaal Aesthetic">
             <div class="preset-aa-preview"><span class="aa-ali">Aa!</span></div>
             <div class="preset-name">Ali Abdaal</div>
           </div>
           <!-- 5. Luxury Gold -->
-          <div class="preset-card-visual" data-preset="iman_gadzhi" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Iman Gadzhi Luxury Gold">
+          <div class="preset-card-visual" role="button" data-preset="iman_gadzhi" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Iman Gadzhi Luxury Gold">
             <div class="preset-aa-preview"><span class="aa-luxury">AA!</span></div>
             <div class="preset-name">Luxury</div>
           </div>
           <!-- 6. TikTok Glow -->
-          <div class="preset-card-visual" data-preset="tiktok_violet" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="TikTok Viral Violet">
+          <div class="preset-card-visual" role="button" data-preset="tiktok_violet" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="TikTok Viral Violet">
             <div class="preset-aa-preview"><span class="aa-tiktok">Aa</span></div>
             <div class="preset-name">TikTok Glow</div>
           </div>
           <!-- 7. Podcast Box -->
-          <div class="preset-card-visual" data-preset="podcast_pill" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Vox / Podcast Box">
+          <div class="preset-card-visual" role="button" data-preset="podcast_pill" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Vox / Podcast Box">
             <div class="preset-aa-preview"><span class="aa-podcast-pill"><span class="aa-podcast-text">Aa!</span></span></div>
             <div class="preset-name">Podcast Box</div>
           </div>
           <!-- 8. Streamer -->
-          <div class="preset-card-visual" data-preset="streamer_lime" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Streamer High-Voltage Lime">
+          <div class="preset-card-visual" role="button" data-preset="streamer_lime" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Streamer High-Voltage Lime">
             <div class="preset-aa-preview"><span class="aa-streamer">AA!</span></div>
             <div class="preset-name">Streamer</div>
           </div>
           <!-- 9. Neon Cyber -->
-          <div class="preset-card-visual" data-preset="neon_cyber" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Neon Cyber Glow">
+          <div class="preset-card-visual" role="button" data-preset="neon_cyber" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Neon Cyber Glow">
             <div class="preset-aa-preview"><span class="aa-neon">Aa</span></div>
             <div class="preset-name">Neon Cyber</div>
           </div>
           <!-- 10. Red Fire -->
-          <div class="preset-card-visual" data-preset="red_fire" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Red Fire Accent">
+          <div class="preset-card-visual" role="button" data-preset="red_fire" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Red Fire Accent">
             <div class="preset-aa-preview"><span class="aa-fire">Aa!</span></div>
             <div class="preset-name">Red Fire</div>
           </div>
           <!-- 11. Stoic Slate -->
-          <div class="preset-card-visual" data-preset="dark_stoic" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Stoic Slate Wisdom">
+          <div class="preset-card-visual" role="button" data-preset="dark_stoic" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Stoic Slate Wisdom">
             <div class="preset-aa-preview"><span class="aa-stoic">Aa!</span></div>
             <div class="preset-name">Stoic Slate</div>
           </div>
           <!-- 12. Clean Minimal -->
-          <div class="preset-card-visual" data-preset="clean_minimal" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Clean Minimalist">
+          <div class="preset-card-visual" role="button" data-preset="clean_minimal" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Clean Minimalist">
             <div class="preset-aa-preview"><span class="aa-minimal">Aa</span></div>
             <div class="preset-name">Clean Minimal</div>
           </div>
           <!-- 13. Retro 70s -->
-          <div class="preset-card-visual" data-preset="retro_vintage" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Retro Vintage 70s Amber">
+          <div class="preset-card-visual" role="button" data-preset="retro_vintage" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Retro Vintage 70s Amber">
             <div class="preset-aa-preview"><span class="aa-retro">Aa!</span></div>
             <div class="preset-name">Retro 70s</div>
           </div>
           <!-- 14. Midnight Neon -->
-          <div class="preset-card-visual" data-preset="midnight_blue" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Midnight Blue Neon">
+          <div class="preset-card-visual" role="button" data-preset="midnight_blue" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Midnight Blue Neon">
             <div class="preset-aa-preview"><span class="aa-midnight">Aa!</span></div>
             <div class="preset-name">Midnight Blue</div>
           </div>
           <!-- 15. True Crime -->
-          <div class="preset-card-visual" data-preset="true_crime" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="True Crime Blood Red">
+          <div class="preset-card-visual" role="button" data-preset="true_crime" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="True Crime Blood Red">
             <div class="preset-aa-preview"><span class="aa-crime">Aa!</span></div>
             <div class="preset-name">True Crime</div>
           </div>
           <!-- 16. Wealth Mint -->
-          <div class="preset-card-visual" data-preset="wealth_cash" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Wealth & Cash Mint">
+          <div class="preset-card-visual" role="button" data-preset="wealth_cash" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Wealth & Cash Mint">
             <div class="preset-aa-preview"><span class="aa-wealth">Aa!</span></div>
             <div class="preset-name">Wealth Mint</div>
           </div>
           <!-- 17. Cosmic Violet -->
-          <div class="preset-card-visual" data-preset="cosmic_violet" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Cosmic Deep Violet">
+          <div class="preset-card-visual" role="button" data-preset="cosmic_violet" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Cosmic Deep Violet">
             <div class="preset-aa-preview"><span class="aa-cosmic">Aa!</span></div>
             <div class="preset-name">Cosmic Violet</div>
           </div>
           <!-- 18. Cinema Bronze -->
-          <div class="preset-card-visual" data-preset="cinematic_bronze" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Cinematic Bronze Gold">
+          <div class="preset-card-visual" role="button" data-preset="cinematic_bronze" onclick="selectPreset(this)" tabindex="0" aria-pressed="false" title="Cinematic Bronze Gold">
             <div class="preset-aa-preview"><span class="aa-bronze">AA!</span></div>
             <div class="preset-name">Cinema Bronze</div>
           </div>
@@ -1207,7 +1207,7 @@
 
       <div class="slider-group">
         <label class="slider-label">🎬 Hardware Encoder</label>
-        <select id="settings-encoder" class="text-input" style="margin-top:var(--sp-sm);">
+        <select id="settings-encoder" class="text-input" title="Hardware GPU Encoder" aria-label="Hardware GPU Encoder" style="margin-top:var(--sp-sm);">
           <option value="auto">🔍 Auto-Detect (Recommended)</option>
           <option value="h264_nvenc">⚡ NVIDIA NVENC (h264_nvenc)</option>
           <option value="h264_qsv">💙 Intel Quick Sync (h264_qsv)</option>
@@ -1282,7 +1282,7 @@
     </div>
 
     <!-- Embedded IFrame -->
-    <iframe id="docs-frame" src="/static/docs.html" style="flex: 1; width: 100%; height: 100%; border: none; background: #0b0f19;"></iframe>
+    <iframe id="docs-frame" title="ATS Studio Documentation and API Reference" src="/static/docs.html" style="flex: 1; width: 100%; height: 100%; border: none; background: #0b0f19;"></iframe>
   </div>
 </div>
 
@@ -1346,7 +1346,7 @@
             </button>
           </div>
           <div id="health-groq-save-feedback" style="font-size:0.72rem; color:var(--text-muted); margin-top:6px;">
-            Get a free Groq API key instantly at <a href="https://console.groq.com/keys" target="_blank" style="color:#38bdf8; text-decoration:underline;">console.groq.com/keys</a>
+            Get a free Groq API key instantly at <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" style="color:#38bdf8; text-decoration:underline;">console.groq.com/keys</a>
           </div>
         </div>
       </div>

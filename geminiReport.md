@@ -373,3 +373,367 @@ The following 10 architectural questions are prepared specifically for Claude to
 ---
 
 *Report compiled and certified for architectural audit by Antigravity AI Engine.*
+
+---
+
+## Claude Response:
+
+> **Reviewed by:** Claude (Anthropic)
+> **Review Date:** 2026-10-07
+> **Scope:** Personal-project architectural audit — speed-first, pragmatism over enterprise overhead.
+> **Tone:** Direct, practical advice. No unnecessary ceremony.
+
+---
+
+### Overall Impression
+
+This is genuinely well-engineered for a personal tool. The Zero-Wait Concat Demuxer alone is a significant insight — most people building this would just call MoviePy and suffer for 10 minutes per video. The single-pass filtergraph philosophy is correct. The `pywebview` + FastAPI combination is lightweight and appropriate. The pre-transcription cache is a smart UX trick. I'll now go question by question.
+
+---
+
+### Q1: Hardware Surface Filtergraphs (hwupload_cuda / vpp_qsv)
+
+**Short answer:** Not worth it for this use case. Keep the unified software filtergraph + hardware encoder.
+
+**Why:**
+
+The `hwupload_cuda` + `overlay_cuda` / `vpp_qsv` pipeline requires that **every filter in the chain** operates on hardware surfaces. The moment you drop in `boxblur` (CPU-only), `colorkey` (CPU-only), or `ass` subtitle burning (libass, CPU-only), FFmpeg is forced to do a `hwdownload → CPU filter → hwupload` round-trip anyway. On consumer iGPU (Intel UHD 630) and entry-level dGPU, these surface transfers eat the gains.
+
+The real-world scenario: your benchmarks already show that eliminating `boxblur` takes you from 39 FPS to 81 FPS — **that's 2x purely from filter elimination, not GPU offload**. This is the correct lever.
+
+**Practical recommendation for this tool:**
+- Keep `h264_qsv` / `h264_nvenc` for encoding only (current approach is optimal).
+- If you want a GPU win, try `-vf "scale_qsv=1920:1080"` for the resize step on Intel systems — that one filter does support QSV surfaces end-to-end and avoids a CPU round-trip for the scale operation.
+- For NVIDIA users: `scale_cuda` before the overlay can help if the avatar overlay is your main bottleneck on high-res cards.
+
+**Bottom line:** Current architecture is the correct pragmatic compromise for a cross-vendor Windows personal tool. Don't chase hardware filtergraphs — eliminate CPU-bound filters instead.
+
+---
+
+### Q2: AV Sync Drift in 2-Hour Concat Demuxer Streams
+
+**Short answer:** Your current `setpts=N/(fps*TB)` approach is solid for video. Add `aresample=async=1000` to the audio stream as a lightweight safety net.
+
+**Why drift happens:**
+When the concat demuxer stitches clips with inconsistent timebases (e.g., one clip is 23.976fps VFR, next is 30fps CFR), micro-gaps in PTS values accumulate. For a 15-minute video it's negligible. For 2 hours across 100+ clips, you can see 200–800ms of drift by the end — enough to notice lip-sync or subtitle timing issues.
+
+**Your current fix is correct** — `setpts=N/(fps*TB)` resets the PTS monotonically from frame 0, which eliminates video-side drift entirely.
+
+**The gap:** Audio side. If processed voiceover audio has any micro-stutter (which can happen after pitch/tempo processing or BGM mixing via `amix`), audio PTS can lag.
+
+**Add this to the audio filter chain in `fast_renderer.py`:**
+```python
+# In the audio filter string, after the voiceover input:
+audio_filter = "[2:a]aresample=async=1000[aout]"
+```
+
+`aresample=async=1000` tells FFmpeg to stretch or compress audio samples by up to 1000 samples (≈22ms at 44.1kHz) per second to resync with video PTS. It's inaudible at this scale and prevents drift from compounding.
+
+**For 2-hour renders specifically:** Consider adding `-vsync cfr` to the FFmpeg output flags. This forces constant frame rate output, eliminating any VFR ambiguity that could cause player-side drift on certain media players.
+
+---
+
+### Q3: Dynamic Whisper Chunk Size (Silence Detection vs. Overlap)
+
+**Short answer:** Use **2-second overlapping windows**, not silence-detection chunking. It's simpler, more reliable, and Whisper handles overlaps gracefully.
+
+**Why silence detection is tricky here:**
+`silencedetect` in FFmpeg works well for podcasts with clear pauses. But narration voiceovers (Stoic/Philosophy/True Crime style) often have deliberate dramatic pauses that you'd want to preserve. Cutting on silence means your chunk boundaries might land mid-sentence if the narrator pauses for effect at the 600s mark.
+
+**Overlapping window approach:**
+```python
+# Instead of:
+chunk_start = chunk_index * 600
+
+# Use:
+OVERLAP_SEC = 2.0
+chunk_start = max(0, chunk_index * 600 - OVERLAP_SEC)
+chunk_end = chunk_start + 600 + OVERLAP_SEC
+```
+
+Then in `_merge_chunk_transcripts()`, deduplicate words that appear in the overlap region by checking if their global timestamps are within `OVERLAP_SEC` of the chunk boundary. Whisper Large-v3 is good at this — it usually produces identical tokens for audio it's heard before, so deduplication by timestamp + text match is clean.
+
+**Real benefit:** Eliminates the word truncation artifact where the last word of chunk N sounds like "narr-" and the first word of chunk N+1 sounds like "-ation" because the model lost context at the boundary.
+
+---
+
+### Q4: Sidechain Compression vs. Linear amix Ducking
+
+**Short answer:** For this tool and these content types, the current `amix` with `volume=0.07` is fine. Sidechain compression is a bonus feature, not a necessity.
+
+**The honest tradeoff:**
+
+| Approach | Quality | Complexity | CPU Cost |
+|---|---|---|---|
+| Current `amix volume=0.07` | Consistent flat ducking | Zero | Zero |
+| `sidechaincompress` | Dynamic, breathes with narration | ~30 lines of filter | ~5% extra CPU |
+
+For Stoicism/Philosophy content where BGM is ambient and subtle (lo-fi, piano, rain), flat ducking at 7% volume sounds totally fine. The BGM is mood, not music.
+
+**If you ever want to add sidechain (optional feature for users who want professional ducking):**
+```python
+# In audio_dsp.py or fast_renderer.py:
+sidechain_filter = (
+    "[2:a][3:a]sidechaincompress="
+    "threshold=0.02:ratio=8:attack=5:release=200:makeup=1[aout]"
+)
+```
+- `threshold=0.02`: Kicks in as soon as voice is present (quiet voice still triggers ducking).
+- `ratio=8:1`: Aggressive duck — BGM drops hard when narration is active.
+- `attack=5ms`: Fast response so BGM doesn't bleed into narration starts.
+- `release=200ms`: Smooth fade-in of BGM after narration pauses (feels natural).
+
+**Recommendation:** Keep current behavior as default. Add sidechain as an optional toggle for advanced users who select BGM. Don't force the CPU cost on everyone.
+
+---
+
+### Q5: pywebview GDI / Direct3D Handle Leaks in Long-Running Sessions
+
+**Short answer:** pywebview itself is well-maintained and doesn't have known systematic handle leaks in recent versions. The risk for this tool is in the JavaScript polling loops, not pywebview internals.
+
+**What to watch:**
+
+1. **`setInterval` polling in `app.js`** — If you're calling `/api/render-status` every 500ms during a 30-minute render and not cleaning up the interval after the render completes, the interval keeps running in the background. Over a multi-hour session with multiple renders, the accumulated timer overhead is minimal but measurable.
+   ```javascript
+   // Always store and clear intervals:
+   const renderPoller = setInterval(checkRenderStatus, 500);
+   // On render completion:
+   clearInterval(renderPoller);
+   ```
+
+2. **Canvas elements for chroma sampler** — If you're creating `drawImage` loops on a canvas and not canceling `requestAnimationFrame` when the modal closes, the render loop keeps running off-screen. Add a cancel flag:
+   ```javascript
+   let chromaFrameId = null;
+   function startChromaPreview() {
+       chromaFrameId = requestAnimationFrame(chromaLoop);
+   }
+   function stopChromaPreview() {
+       if (chromaFrameId) cancelAnimationFrame(chromaFrameId);
+   }
+   ```
+
+3. **Blob URLs** — If you create `URL.createObjectURL()` for preview images or video frames and don't call `URL.revokeObjectURL()` after use, the browser holds memory references until the page is unloaded. For a long-running session, this adds up.
+
+**pywebview-specific:** On Windows, pywebview uses `WinForms + WebView2`. The WebView2 component manages its own D3D11 surface pool. Long-lived sessions (2+ hours) are fine. The main risk would be if you're loading very large binary responses (e.g., full video frames as base64) into the WebView DOM — avoid that.
+
+**Practical for your tool:** Add `clearInterval` on all render pollers and `revokeObjectURL` on preview blobs. That's 95% of the leak prevention you need.
+
+---
+
+### Q6: libass Rasterization as Secondary Bottleneck at 80+ FPS
+
+**Short answer:** Yes, libass becomes the bottleneck at 80+ FPS on complex subtitle presets, but it's manageable. You're already past the first bottleneck (boxblur) — libass is the next one.
+
+**What libass does per frame:**
+For every frame, libass checks if any subtitle event is active, rasterizes the glyph shapes with TTF hinting and Gaussian outline blur to a bitmap cache, then composites onto the video frame. The cache helps — if the same subtitle line appears for 3 seconds at 30fps, it rasterizes once and reuses for 90 frames.
+
+**When it hurts:**
+- Dense subtitle presets with large `\blur` shadow or complex `\bord` outlines (e.g., Cyberpunk Neon with multi-layer borders).
+- Kinetic word scaling (`\fscx108\fscy108`) changes the glyph size every word, forcing cache invalidation more frequently.
+- Fonts with many complex glyphs (decorative TTFs are worse than clean sans-serifs).
+
+**Practical optimizations (in order of impact):**
+
+1. **Use clean, simple TTF fonts** (Montserrat, Inter, Oswald) — they rasterize 30-40% faster than decorative fonts.
+2. **Reduce `\blur` shadow values** in subtitle presets — a `\blur4` soft shadow costs roughly 3x more than `\blur1`.
+3. **Cache-friendly kinetic tagging:** Instead of scaling every spoken word differently, only scale the active word and keep all others identical. You're likely already doing this with `\r` resets — just verify the inactive words all share an identical style string so libass can cache them as a group.
+4. **Bitmap subtitle pre-render (advanced):** Not practical for this tool. Would require generating a separate subtitle video stream and using `overlay` which defeats the single-pass architecture.
+
+**Reality check:** At 80 FPS on a 30fps timeline, you have 12.5ms per frame budget. libass typically uses 2-4ms per frame for simple presets, 6-9ms for complex ones. You have headroom. Only worry about this if you see FPS drop from 81 back to 55 specifically on subtitle-heavy sections.
+
+---
+
+### Q7: Optimal Concurrency for Groq API Key Pool (Free Tier)
+
+**Short answer:** For a 3-key Free/Tier-1 pool, **max 2 concurrent requests per key** = **6 total concurrent requests** is the safe ceiling.
+
+**The math:**
+
+Groq Free Tier enforces:
+- 30 requests/minute (RPM) per key
+- 20,000 tokens/minute (TPM) per key (note: geminiReport says 7,000 but the actual Groq limit as of 2026 is 20K for `whisper-large-v3` — verify on your account)
+- A 10-minute audio chunk at 32kbps mono consumes roughly 3,000–4,000 Whisper tokens
+
+With 30 RPM per key and processing that typically takes 10-30 seconds per chunk:
+```
+Safe concurrent per key = floor(30 RPM / (60s / avg_chunk_processing_time))
+                        = floor(30 / (60 / 15))  # 15s avg processing
+                        = floor(30 / 4)
+                        = 7 concurrent max per key (theoretical)
+```
+
+But Groq's RPM limit is a sliding window, not a per-second rate. The safe pragmatic limit is **2 concurrent per key** to leave burst headroom and prevent burst 429s from queuing delays compounding.
+
+**Recommended implementation in `transcriber.py`:**
+```python
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+MAX_CONCURRENT_PER_KEY = 2
+NUM_KEYS = len(groq_api_keys)
+MAX_WORKERS = MAX_CONCURRENT_PER_KEY * NUM_KEYS  # = 6 for 3 keys
+
+with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+    # Distribute chunks round-robin across keys
+    futures = []
+    for i, chunk in enumerate(chunks):
+        key = groq_api_keys[i % NUM_KEYS]
+        futures.append(pool.submit(_transcribe_chunk, chunk, key))
+```
+
+**On 429 errors:** Already handled with retry/key rotation — good. Add **exponential backoff** (1s, 2s, 4s) instead of immediate retry to avoid ban escalation:
+```python
+for attempt in range(3):
+    try:
+        return client.audio.transcriptions.create(...)
+    except RateLimitError:
+        time.sleep(2 ** attempt)
+```
+
+---
+
+### Q8: GPU-Accelerated RGB Euclidean Colorkey
+
+**Short answer:** No native GPU RGB Euclidean colorkey filter exists in FFmpeg. Your CPU `colorkey` approach is the correct choice.
+
+**Why it's not a real problem:**
+The `colorkey` CPU filter operates on a per-pixel SIMD vectorized loop. At 1920x1080 with a single colorkey operation, this is approximately 2.07 million pixel comparisons per frame. On a modern x86-64 CPU with AVX2, that's roughly 0.5–1.5ms per frame — completely affordable even at 80+ FPS.
+
+**What actually exists:**
+- `chromakey` — GPU-accelerated in FFmpeg but uses YUV space (breaks white waveforms as you correctly identified).
+- `colorkey` — CPU only, RGB Euclidean. This is the right tool.
+- `geq` filter — Can express arbitrary per-pixel math including RGB Euclidean distance, but is even slower than `colorkey` as it's a generic expression evaluator.
+
+**CUDA/OpenCL custom filter** — Technically possible to write a custom FFmpeg filter using CUDA for GPU Euclidean RGB keying, but that's a months-long C project with no practical benefit over the current approach.
+
+**Practical recommendation:** Keep the current `colorkey` filter. If a user has an extremely complex motion-graphics overlay at very high resolution (4K+), consider adding a `scale=1920:1080` before colorkey to ensure you're keying at 1080p not 4K.
+
+---
+
+### Q9: Crash Resumption & Checkpointed Rendering
+
+**Short answer:** Segment-based checkpointing is the right architecture, but implement it as an **opt-in feature** triggered only for renders > 20 minutes. Keep single-pass as the default.
+
+**Why single-pass should stay default:**
+The seam problem is real. Even with stream-copy concat demuxer stitching of pre-rendered segments, there are potential issues:
+- Audio pop at segment boundaries if AAC frames don't align exactly.
+- Video keyframe misalignment causing 1–3 frame visual glitch at stitch points.
+- Subtitle timing must be split and offset per segment.
+
+For videos under 20 minutes, the restart-from-zero cost is low enough that checkpointing overhead isn't justified.
+
+**For 45-minute to 2-hour renders, here's a clean architecture:**
+
+```python
+# Segment size: 15 minutes (900 seconds)
+SEGMENT_DURATION = 900
+
+def render_with_checkpoints(total_duration, ...):
+    segments = []
+    for seg_start in range(0, int(total_duration), SEGMENT_DURATION):
+        seg_end = min(seg_start + SEGMENT_DURATION, total_duration)
+        seg_output = TEMP_DIR / f"segment_{seg_start:06d}.mp4"
+        
+        if seg_output.exists() and is_valid_mp4(seg_output):
+            # Resume: skip completed segments
+            segments.append(seg_output)
+            continue
+        
+        render_segment(seg_start, seg_end, seg_output, ...)
+        segments.append(seg_output)
+    
+    # Final stitch: stream-copy concat (no re-encode)
+    stitch_segments_stream_copy(segments, final_output)
+```
+
+**Avoiding seam artifacts:**
+- Always end segments on a keyframe: add `-force_key_frames "expr:gte(t,{seg_end})"` to the segment render.
+- Use `-c:a copy` and `-c:v copy` during stitching (stream-copy, not re-encode).
+- Split subtitle `.ass` file per segment with offset timestamps.
+
+**For this personal tool:** Start simple — add a "Resume" button that detects existing segment files and skips completed ones. Don't over-engineer this into a distributed render farm.
+
+---
+
+### Q10: Desktop Packaging & Portable Distribution (PyInstaller)
+
+**Short answer:** The current approach is sound. Below are the specific packaging patterns that prevent the common failure modes.
+
+**FFmpeg/ffprobe binary bundling:**
+```python
+# In desktop_launcher.py or config.py:
+if getattr(sys, 'frozen', False):
+    # Running as PyInstaller EXE
+    BASE_DIR = Path(sys._MEIPASS)
+    FFMPEG_PATH = BASE_DIR / "ffmpeg.exe"
+    FFPROBE_PATH = BASE_DIR / "ffprobe.exe"
+else:
+    FFMPEG_PATH = Path("ffmpeg.exe")
+    FFPROBE_PATH = Path("ffprobe.exe")
+```
+
+In `ats_author.spec`:
+```python
+binaries = [
+    ('ffmpeg.exe', '.'),
+    ('ffprobe.exe', '.'),
+]
+```
+
+**WebView2 Bootstrapper:**
+Do NOT bundle the full WebView2 runtime (150MB+). Instead:
+- Use the **WebView2 Evergreen bootstrapper** (1.6MB `.exe`) in your installer.
+- Or rely on the fact that **Edge/WebView2 is pre-installed on all Windows 10/11 machines** (it's a Windows component since 2021).
+- The pywebview `create_window()` call gracefully shows an error if WebView2 is missing — catch it and show a user-friendly message with a download link.
+
+**Font directory:**
+```python
+# In ats_author.spec:
+datas = [
+    ('assets/fonts/*', 'assets/fonts'),
+    ('frontend/*', 'frontend'),
+    ('data/settings.json', 'data'),
+]
+```
+
+**Output path portability (already implemented):**
+The portability check in `backend/config.py` that validates `output_dir` against the current username is exactly right. Extend it to also check if the drive letter exists:
+```python
+if not Path(output_dir).drive or not Path(output_dir).exists():
+    output_dir = str(Path.home() / "Videos" / "ATS_Output")
+```
+
+**Distribution checklist:**
+- [ ] `console=False` in spec (done ✓)
+- [ ] `sys.stdout/stderr` null-safe buffering in launcher (done ✓)
+- [ ] FFmpeg binaries as `binaries` in spec
+- [ ] `assets/fonts/` in `datas`
+- [ ] `frontend/` HTML/JS/CSS in `datas`
+- [ ] `data/settings.json` default in `datas`
+- [ ] Output path portability validation (done ✓)
+- [ ] Log file writes to `%APPDATA%` or `data/logs/` (relative to exe) — already done ✓
+
+**One thing to check:** In the PyInstaller `--onedir` build, all temp paths should reference `sys._MEIPASS`. In `--onefile` builds, `_MEIPASS` is a temp directory that gets cleaned on exit — do NOT write user data (settings, logs) there. Write user data to `Path(sys.executable).parent / "data"` so it persists next to the `.exe`.
+
+---
+
+### Summary: Speed Priorities Ranked
+
+For your use case, here's the ordered list of what actually moves the needle on render speed:
+
+| Priority | Action | Expected Gain |
+|---|---|---|
+| **1** | Set `blur_radius = 0` by default (done ✓) | **+100% FPS** (39 → 81) |
+| **2** | Visualizer OFF by default (done ✓) | **+18% FPS** (39 → 46) |
+| **3** | BGM skip when no file provided (done ✓) | **+5% FPS** |
+| **4** | Pre-transcription cache (done ✓) | **-60s wait time** |
+| **5** | `aresample=async=1000` for 2hr AV sync | Safety net, no FPS cost |
+| **6** | 2-second Whisper chunk overlap | Better transcript quality |
+| **7** | `clearInterval` + `revokeObjectURL` in JS | Memory health for long sessions |
+| **8** | Exponential backoff on Groq 429 | Reliability, no speed gain |
+| **9** | Segment checkpointing (for 45min+ renders) | Future feature — opt-in only |
+
+**Overall verdict:** The architecture is correct and well-optimized for a personal Windows desktop tool. The single-pass filtergraph, hardware encoder cascade, Zero-Wait concat demuxer, and pre-transcription cache are all exactly the right calls. No major architectural changes needed — the improvements above are refinements, not redesigns.
+
+*— Claude*
+

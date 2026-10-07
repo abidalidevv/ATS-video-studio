@@ -311,9 +311,10 @@ async function saveSettings() {
       const msg = document.getElementById('settings-msg');
       if (msg) { msg.style.display = 'block'; setTimeout(() => msg.style.display = 'none', 3000); }
       loadGpuInfo();
+      showToast('✅ Settings saved! Engine updated.', 'success');
     }
   } catch (e) {
-    alert('Failed to save settings: ' + e.message);
+    showToast('Failed to save settings: ' + e.message, 'error');
   }
 }
 

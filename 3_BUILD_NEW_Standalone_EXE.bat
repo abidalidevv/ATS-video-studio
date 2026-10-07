@@ -48,10 +48,10 @@ if %ERRORLEVEL% NEQ 0 (
     )
 )
 
-%PY_EXE% -c "import fastapi, uvicorn, PIL, requests, webview, pythonnet" >nul 2>&1
+%PY_EXE% -c "import fastapi, uvicorn, PIL, requests, webview, pythonnet, groq" >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
     echo       Installing required dependencies and native GUI libraries...
-    %PY_EXE% -m pip install fastapi uvicorn pillow requests python-multipart pywebview pythonnet
+    %PY_EXE% -m pip install -r requirements.txt pyinstaller
 )
 
 REM 3. Verify Portable FFmpeg in bin
@@ -114,6 +114,7 @@ if not exist "dist\ATSAuthor\data" mkdir "dist\ATSAuthor\data"
 if not exist "dist\ATSAuthor\data\output" mkdir "dist\ATSAuthor\data\output"
 if not exist "dist\ATSAuthor\data\avatars" mkdir "dist\ATSAuthor\data\avatars"
 if not exist "dist\ATSAuthor\data\temp" mkdir "dist\ATSAuthor\data\temp"
+if not exist "dist\ATSAuthor\data\logs" mkdir "dist\ATSAuthor\data\logs"
 if exist "data\settings.json" (
     copy /y "data\settings.json" "dist\ATSAuthor\data\settings.json" >nul
     echo       [+] Bundled data\settings.json

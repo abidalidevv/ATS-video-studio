@@ -70,6 +70,27 @@ class LogTee:
             except Exception:
                 pass
 
+    def isatty(self):
+        if self.original_stream and hasattr(self.original_stream, "isatty"):
+            try:
+                return self.original_stream.isatty()
+            except Exception:
+                return False
+        return False
+
+    def fileno(self):
+        if self.original_stream and hasattr(self.original_stream, "fileno"):
+            try:
+                return self.original_stream.fileno()
+            except Exception:
+                pass
+        raise OSError("LogTee stream has no fileno")
+
+    def __getattr__(self, name):
+        if self.original_stream and hasattr(self.original_stream, name):
+            return getattr(self.original_stream, name)
+        raise AttributeError(f"'LogTee' object has no attribute '{name}'")
+
 
 _logging_initialized = False
 
