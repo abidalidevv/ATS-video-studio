@@ -393,7 +393,8 @@ def render_avatar_video(
 
     # Build FFmpeg command inputs
     cmd_inputs = [
-        # Input 0: B-Roll via concat demuxer with auto timestamp generation to fix non-monotonic clip origins
+        # Input 0: B-Roll via concat demuxer with auto-looping to guarantee video never ends before audio
+        "-stream_loop", "-1",
         "-fflags", "+genpts",
         "-f", "concat", "-safe", "0", "-i", concat_list_path,
         # Input 1: Avatar PNG (static image; repeated by overlay eof_action=repeat without RAM leak)
