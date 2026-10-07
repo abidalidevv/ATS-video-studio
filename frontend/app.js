@@ -1609,6 +1609,31 @@ function closeSettingsPanel(event) {
   }
 }
 
+function openDocsModal() {
+  const modal = document.getElementById('docs-modal');
+  if (modal) {
+    modal.classList.add('visible');
+    const frame = document.getElementById('docs-frame');
+    if (frame && (!frame.src || frame.src === 'about:blank')) {
+      frame.src = '/static/docs.html';
+    }
+  }
+}
+
+function closeDocsModal(event) {
+  if (!event || event.target === document.getElementById('docs-modal')) {
+    const modal = document.getElementById('docs-modal');
+    if (modal) modal.classList.remove('visible');
+  }
+}
+
+function reloadDocsIframe() {
+  const frame = document.getElementById('docs-frame');
+  if (frame) {
+    frame.src = '/static/docs.html?t=' + Date.now();
+  }
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // System Health & Storage Guard Modal

@@ -108,7 +108,14 @@ def load_settings() -> dict:
     merged["groq_api_key"]  = gr_keys[0] if gr_keys else ""
 
     out_dir_val = str(merged.get("output_dir", "")).strip()
-    if not out_dir_val or not Path(out_dir_val).exists():
+    try:
+        p = Path(out_dir_val)
+        # Portability check: If invalid, doesn't exist, not a directory, or belongs to another user's profile
+        user_home_str = str(Path.home()).lower()
+        is_foreign_user = ("\\users\\" in out_dir_val.lower()) and not out_dir_val.lower().startswith(user_home_str)
+        if not out_dir_val or is_foreign_user or not p.exists() or not p.is_dir():
+            merged["output_dir"] = str(OUTPUT_DIR)
+    except Exception:
         merged["output_dir"] = str(OUTPUT_DIR)
     return merged
 

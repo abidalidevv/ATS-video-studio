@@ -17,7 +17,14 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
-# Fix Windows console unicode printing
+# Fix Windows console unicode printing and GUI mode (console=False)
+if sys.stdout is None:
+    import io
+    sys.stdout = io.StringIO()
+if sys.stderr is None:
+    import io
+    sys.stderr = io.StringIO()
+
 if hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")

@@ -38,9 +38,9 @@
         <div id="gpu-dot" class="gpu-indicator cpu"></div>
         <span id="gpu-label-text" class="gpu-value" style="font-size:0.75rem">Detecting...</span>
       </div>
-      <a href="/static/docs.html" target="_blank" class="btn btn-ghost" id="btn-docs" title="User Documentation & API Guide" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+      <button type="button" class="btn btn-ghost" onclick="openDocsModal()" id="btn-docs" title="User Documentation & API Guide" style="display:inline-flex; align-items:center; gap:6px;">
         📖 Docs
-      </a>
+      </button>
       <button class="btn btn-ghost" onclick="openHealthGuardModal(true)" id="btn-health-guard" title="System Health & Storage Guard" style="display:inline-flex; align-items:center; gap:6px;">
         🛡️ Health
       </button>
@@ -1227,6 +1227,30 @@
       </button>
       <div id="settings-msg" style="font-size:0.8rem;color:var(--accent-green);display:none;">✅ Settings saved!</div>
     </div>
+  </div>
+</div>
+
+<!-- ═══ In-Window Documentation & Architecture Modal ═══ -->
+<div class="outputs-panel" id="docs-modal" style="z-index: 9998; padding: 20px;" onclick="closeDocsModal(event)">
+  <div class="outputs-modal" onclick="event.stopPropagation()" style="max-width: 1100px; width: 95vw; height: 88vh; max-height: 88vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border: 1px solid rgba(255,255,255,0.18); box-shadow: 0 24px 80px rgba(0,0,0,0.85); background: #0c101d; border-radius: 16px;">
+    
+    <!-- Modal Header -->
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(18,24,38,0.95);">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 1.4rem;">📖</span>
+        <div>
+          <h2 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; color: #ffffff; margin: 0;">ATS Studio — Documentation &amp; Manual</h2>
+          <span style="font-size: 0.74rem; color: var(--text-muted);">Offline Interactive User Guide · Architecture &amp; REST API Reference</span>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button type="button" class="btn btn-ghost" onclick="reloadDocsIframe()" title="Reload documentation" style="padding: 4px 10px; font-size: 0.78rem; height: 30px;">🔄 Reload</button>
+        <button type="button" class="btn btn-ghost" onclick="closeDocsModal()" aria-label="Close documentation modal" style="font-size: 1.1rem; padding: 4px 10px; height: 30px; line-height: 1;">✕</button>
+      </div>
+    </div>
+
+    <!-- Embedded IFrame -->
+    <iframe id="docs-frame" src="/static/docs.html" style="flex: 1; width: 100%; height: 100%; border: none; background: #0b0f19;"></iframe>
   </div>
 </div>
 
