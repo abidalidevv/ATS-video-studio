@@ -30,7 +30,11 @@ def probe_clip_info(clip_path: str) -> Dict[str, Any]:
     """
     Returns media information: width, height, duration, has_audio, is_pure_video.
     Results are cached in-memory for instant subsequent lookups.
+    Guarantees exists=False and duration=0 if file is missing or corrupted.
     """
+    if not clip_path or not os.path.isfile(clip_path):
+        return {"duration": 0.0, "width": 0, "height": 0, "is_landscape": False, "has_audio": False, "is_pure_video": False, "exists": False}
+
     p_key = str(Path(clip_path).resolve())
     if p_key in _CLIP_INFO_CACHE:
         return _CLIP_INFO_CACHE[p_key]
@@ -46,28 +50,28 @@ def probe_clip_info(clip_path: str) -> Dict[str, Any]:
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         data = json.loads(res.stdout) if res.stdout else {}
-        dur = float(data.get("format", {}).get("duration", 30.0))
+        dur = float(data.get("format", {}).get("duration", 0.0))
         streams = data.get("streams", [])
         video_streams = [s for s in streams if s.get("codec_type") == "video" and s.get("width")]
-        w = int(video_streams[0]["width"]) if video_streams else 1920
-        h = int(video_streams[0]["height"]) if video_streams else 1080
+        w = int(video_streams[0]["width"]) if video_streams else 0
+        h = int(video_streams[0]["height"]) if video_streams else 0
         has_audio = any(s.get("codec_type") == "audio" for s in streams)
         is_pure_video = len(streams) == 1 and bool(video_streams)
         info = {
-            "duration": max(0.5, dur),
+            "duration": max(0.0, dur),
             "width": w,
             "height": h,
-            "is_landscape": w >= h,
+            "is_landscape": w >= h and w > 0,
             "has_audio": has_audio,
-            "is_pure_video": is_pure_video
+            "is_pure_video": is_pure_video,
+            "exists": True
         }
-        _CLIP_INFO_CACHE[p_key] = info
+        if dur > 0:
+            _CLIP_INFO_CACHE[p_key] = info
         return info
     except Exception as e:
         print(f"[LocalPool] probe error for {clip_path}: {e}")
-        fallback = {"duration": 30.0, "width": 1920, "height": 1080, "is_landscape": True, "has_audio": False, "is_pure_video": True}
-        _CLIP_INFO_CACHE[p_key] = fallback
-        return fallback
+        return {"duration": 0.0, "width": 0, "height": 0, "is_landscape": False, "has_audio": False, "is_pure_video": False, "exists": False}
 
 
 def get_clip_duration(clip_path: str) -> float:
@@ -82,8 +86,7 @@ _FOLDER_CACHE: Dict[str, Tuple[float, List[str]]] = {}
 def scan_folder(folder_path: str, landscape_only: bool = True, force_refresh: bool = False) -> List[str]:
     """
     Ultra-fast recursive scan of a folder for valid video clip files.
-    Skips hidden/system directories ($RECYCLE.BIN, .git, temp) and caches results
-    for 5 minutes to prevent UI freezes when browsing or selecting clips.
+    Always verifies physical existence on disk so deleted files are never returned.
     """
     folder_str = str(folder_path).strip().strip('"').strip("'")
     if not folder_str:
@@ -93,11 +96,13 @@ def scan_folder(folder_path: str, landscape_only: bool = True, force_refresh: bo
     folder_key = str(folder)
     now = time.time()
 
-    # Return cached results if fresh (< 300s)
+    # Return cached results if fresh (< 30s) AND all files actually exist right now
     if not force_refresh and folder_key in _FOLDER_CACHE:
         cached_time, cached_clips = _FOLDER_CACHE[folder_key]
-        if now - cached_time < 300:
-            return cached_clips
+        if now - cached_time < 30:
+            existing = [c for c in cached_clips if os.path.isfile(c) and os.path.getsize(c) > 1000]
+            if len(existing) == len(cached_clips):
+                return existing
 
     if not folder.exists() or not folder.is_dir():
         raise FileNotFoundError(f"B-Roll folder not found: {folder_path}")
@@ -112,7 +117,9 @@ def scan_folder(folder_path: str, landscape_only: bool = True, force_refresh: bo
         for f in files:
             ext = os.path.splitext(f)[1].lower()
             if ext in VALID_EXTENSIONS:
-                clips.append(os.path.join(root, f))
+                full_p = os.path.join(root, f)
+                if os.path.isfile(full_p) and os.path.getsize(full_p) > 1000:
+                    clips.append(full_p)
 
     if not clips:
         raise FileNotFoundError(f"No video clips found in '{folder_path}'. "
@@ -159,8 +166,10 @@ def select_local_clips(
     # setpts factor: if speed=0.75, setpts = 1/0.75 ≈ 1.333 (stretches time)
     setpts_factor = 1.0 / speed_multiplier
 
-    all_clips = scan_folder(folder_path)
+    all_clips = [c for c in scan_folder(folder_path, force_refresh=True) if os.path.isfile(c) and os.path.getsize(c) > 1000]
     folder_clip_count = len(all_clips)
+    if folder_clip_count == 0:
+        raise FileNotFoundError(f"No valid video clips found on disk in: {folder_path}")
 
     # Shuffle the pool (without replacement)
     rng = random.Random(shuffle_seed)
@@ -187,29 +196,35 @@ def select_local_clips(
                 deferred_clips.clear()
                 pool_index = 0
             else:
-                remaining = [c for c in all_clips if c not in used_paths]
-            if not remaining:
-                # All clips used at least once — allow reuse with new shuffle
-                remaining = all_clips.copy()
-                used_paths.clear()
-                wrapped = True
-                print(f"[LocalPool] ⚠️  All {folder_clip_count} clips exhausted "
-                      f"(accumulated {accumulated_dur:.1f}s / {target_duration_sec:.1f}s). "
-                      f"Re-shuffling pool for continuation...")
-            rng.shuffle(remaining)
-            pool = remaining
-            pool_index = 0
+                remaining = [c for c in all_clips if c not in used_paths and os.path.isfile(c)]
+                if not remaining:
+                    # All clips used at least once — allow reuse with new shuffle
+                    remaining = [c for c in all_clips if os.path.isfile(c)]
+                    used_paths.clear()
+                    wrapped = True
+                    print(f"[LocalPool] ⚠️  All {len(remaining)} clips exhausted "
+                          f"(accumulated {accumulated_dur:.1f}s / {target_duration_sec:.1f}s). "
+                          f"Re-shuffling pool for continuation...")
+                rng.shuffle(remaining)
+                pool = remaining
+                pool_index = 0
 
         clip_path = pool[pool_index]
         pool_index += 1
 
+        if not (os.path.isfile(clip_path) and os.path.getsize(clip_path) > 1000):
+            continue
+
         info = probe_clip_info(clip_path)
+        if not info.get("exists", False) or info.get("duration", 0) <= 0.5:
+            continue
+
         # Prioritize 1080p landscape clips first to guarantee concat demuxer resolution uniformity
         if (info.get("width") != 1920 or info.get("height") != 1080) and pool_index < len(pool) and clip_path not in deferred_clips:
             deferred_clips.append(clip_path)
             continue
 
-        raw_dur = info.get("duration", 30.0)
+        raw_dur = info.get("duration", 0.0)
 
         # Dynamic cuts: if enabled and clip is longer than min_sec, slice randomly
         if is_fast_cuts and raw_dur > min_sec:
@@ -282,10 +297,15 @@ def prepare_clean_concat_clips(
             raw_p = str(c)
             is_dict = False
 
-        if not raw_p or not os.path.exists(raw_p):
-            return idx, c
+        if not raw_p or not os.path.isfile(raw_p) or os.path.getsize(raw_p) < 1000:
+            print(f"[LocalPool] ⚠️ Skipping missing or empty file: {raw_p}")
+            return idx, None
 
         info = probe_clip_info(raw_p)
+        if not info.get("exists", False):
+            print(f"[LocalPool] ⚠️ Probe failed or file unreadable: {raw_p}")
+            return idx, None
+
         w = info.get("width", 1920)
         h = info.get("height", 1080)
         is_pure = info.get("is_pure_video", False)
@@ -313,8 +333,8 @@ def prepare_clean_concat_clips(
                 try:
                     subprocess.run(cmd, capture_output=True, check=True, timeout=60)
                 except Exception as e:
-                    print(f"[LocalPool] Normalization warning for {raw_p}: {e}, using original")
-                    return idx, c
+                    print(f"[LocalPool] Normalization warning for {raw_p}: {e}")
+                    return idx, None
 
             if is_dict:
                 c_copy = dict(c)
@@ -338,8 +358,8 @@ def prepare_clean_concat_clips(
             try:
                 subprocess.run(cmd, capture_output=True, check=True, timeout=15)
             except Exception as e:
-                print(f"[LocalPool] Stream copy warning for {raw_p}: {e}, using original")
-                return idx, c
+                print(f"[LocalPool] Stream copy warning for {raw_p}: {e}")
+                return idx, None
 
         if is_dict:
             c_copy = dict(c)
@@ -358,17 +378,20 @@ def prepare_clean_concat_clips(
             if progress_callback and (done_cnt % 5 == 0 or done_cnt == len(clips)):
                 progress_callback(f"Sanitized B-Roll clips {done_cnt}/{len(clips)} (pure video mode)...")
 
-    print(f"[LocalPool] ⚡ Sanitized {len(cleaned_clips)} B-Roll clips in parallel (pure video concat mode).")
-    return cleaned_clips
+    # Filter out any discarded or failed clips
+    valid_cleaned = [c for c in cleaned_clips if c is not None]
+    print(f"[LocalPool] ⚡ Sanitized {len(valid_cleaned)} valid B-Roll clips in parallel (pure video concat mode).")
+    return valid_cleaned
 
 
 def write_concat_list(clips: List[Any], output_path: str) -> str:
     """
     Writes an FFmpeg concat demuxer list file for the provided clips.
-    Supports native 'inpoint' and 'outpoint' directives for dynamic sliced cuts
-    without requiring any intermediate video files or CPU re-encoding overhead.
+    Supports native 'inpoint' and 'outpoint' directives for dynamic sliced cuts.
+    Guarantees every written file strictly exists on disk.
     """
     lines = ["# FFmpeg concat demuxer list — Avatar Storyteller Engine"]
+    valid_count = 0
     for c in clips:
         if isinstance(c, dict):
             raw_p = c.get("path", "")
@@ -382,11 +405,19 @@ def write_concat_list(clips: List[Any], output_path: str) -> str:
             slice_dur = 0.0
 
         abs_p = Path(raw_p).resolve()
+        if not (abs_p.is_file() and abs_p.stat().st_size > 1000):
+            print(f"[LocalPool] ⚠️ Excluding missing or empty file from concat list: {abs_p}")
+            continue
+
         path_escaped = str(abs_p).replace("\\", "/").replace("'", "'\\''")
         lines.append(f"file '{path_escaped}'")
         if is_sliced and slice_dur > 0:
             lines.append(f"inpoint {start_offset:.3f}")
             lines.append(f"outpoint {(start_offset + slice_dur):.3f}")
+        valid_count += 1
+
+    if valid_count == 0:
+        raise RuntimeError("No valid, existing video files available for concat list!")
 
     content = "\n".join(lines) + "\n"
     output_path = str(output_path)
