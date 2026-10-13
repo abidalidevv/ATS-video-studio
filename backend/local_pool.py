@@ -321,18 +321,36 @@ def prepare_clean_concat_clips(
         if w != 1920 or h != 1080:
             norm_file = out_dir / f"norm_1080p_{p_hash}.mp4"
             norm_path = str(norm_file)
-            if not (norm_file.exists() and norm_file.stat().st_size > 1000):
+            tmp_norm = out_dir / f"norm_1080p_{p_hash}.tmp.mp4"
+
+            # Check existing file validity (must have valid moov atom)
+            is_valid = False
+            if norm_file.exists() and norm_file.stat().st_size > 1000:
+                chk = probe_clip_info(norm_path)
+                if chk.get("exists", False):
+                    is_valid = True
+                else:
+                    norm_file.unlink(missing_ok=True)
+
+            if not is_valid:
+                tmp_norm.unlink(missing_ok=True)
                 cmd = [
                     ffmpeg, "-y", "-v", "error",
+                    "-threads", "2",
                     "-i", raw_p,
                     "-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=30",
                     "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
                     "-an", "-dn",
-                    norm_path
+                    str(tmp_norm)
                 ]
                 try:
-                    subprocess.run(cmd, capture_output=True, check=True, timeout=60)
+                    subprocess.run(cmd, capture_output=True, check=True, timeout=120)
+                    if tmp_norm.exists() and tmp_norm.stat().st_size > 1000:
+                        tmp_norm.replace(norm_file)
+                    else:
+                        return idx, None
                 except Exception as e:
+                    tmp_norm.unlink(missing_ok=True)
                     print(f"[LocalPool] Normalization warning for {raw_p}: {e}")
                     return idx, None
 
@@ -346,18 +364,33 @@ def prepare_clean_concat_clips(
         # Case 3: Native 1080p but contains extra audio or data streams — fast stream-copy strip (-c:v copy -an -dn, <0.05s)
         clean_file = out_dir / f"pure_v_{p_hash}.mp4"
         clean_path = str(clean_file)
+        tmp_clean = out_dir / f"pure_v_{p_hash}.tmp.mp4"
 
-        if not (clean_file.exists() and clean_file.stat().st_size > 1000):
+        is_clean_valid = False
+        if clean_file.exists() and clean_file.stat().st_size > 1000:
+            chk = probe_clip_info(clean_path)
+            if chk.get("exists", False):
+                is_clean_valid = True
+            else:
+                clean_file.unlink(missing_ok=True)
+
+        if not is_clean_valid:
+            tmp_clean.unlink(missing_ok=True)
             cmd = [
                 ffmpeg, "-y", "-v", "error",
                 "-i", raw_p,
                 "-c:v", "copy",
                 "-an", "-dn",
-                clean_path
+                str(tmp_clean)
             ]
             try:
-                subprocess.run(cmd, capture_output=True, check=True, timeout=15)
+                subprocess.run(cmd, capture_output=True, check=True, timeout=30)
+                if tmp_clean.exists() and tmp_clean.stat().st_size > 1000:
+                    tmp_clean.replace(clean_file)
+                else:
+                    return idx, None
             except Exception as e:
+                tmp_clean.unlink(missing_ok=True)
                 print(f"[LocalPool] Stream copy warning for {raw_p}: {e}")
                 return idx, None
 

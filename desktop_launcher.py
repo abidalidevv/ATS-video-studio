@@ -40,6 +40,11 @@ else:
     APP_DIR    = Path(__file__).resolve().parent
     BUNDLE_DIR = APP_DIR
 
+try:
+    os.chdir(APP_DIR)
+except Exception:
+    pass
+
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 if str(BUNDLE_DIR) not in sys.path:
@@ -143,10 +148,24 @@ def main():
         gpu = detect_gpu_encoder()
         print(f"[AvatarEngine] GPU Hardware Encoder: {gpu.upper()} (GPU Acceleration ACTIVE)")
     except Exception as e:
-        print(f"[ERROR] Failed to load backend: {e}")
         import traceback
-        traceback.print_exc()
-        input("\nPress Enter to exit...")
+        err_msg = f"[ERROR] Failed to load backend: {e}\n{traceback.format_exc()}"
+        print(err_msg)
+        try:
+            with open(APP_DIR / "startup_error.log", "w", encoding="utf-8") as f:
+                f.write(err_msg)
+        except Exception:
+            pass
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                f"ATS Author failed to start:\n\n{e}\n\nCheck startup_error.log for details.",
+                "ATS Author Startup Error",
+                0x10
+            )
+        except Exception:
+            pass
         sys.exit(1)
 
     import uvicorn
@@ -245,4 +264,25 @@ def main():
 if __name__ == "__main__":
     import multiprocessing
     multiprocessing.freeze_support()
-    main()
+    try:
+        main()
+    except Exception as e:
+        import traceback
+        err = f"[FATAL] ATS Author crashed unexpectedly:\n\n{e}\n{traceback.format_exc()}"
+        print(err)
+        try:
+            with open(APP_DIR / "crash.log", "w", encoding="utf-8") as f:
+                f.write(err)
+        except Exception:
+            pass
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                f"ATS Author encountered an unexpected error:\n\n{e}\n\nCheck crash.log for details.",
+                "ATS Author Crash",
+                0x10
+            )
+        except Exception:
+            pass
+        sys.exit(1)

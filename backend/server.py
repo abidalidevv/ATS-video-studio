@@ -460,6 +460,21 @@ async def get_visualizer_presets():
 # ── B-Roll Folder Scan & Browse ────────────────────────────────────────────────
 def _show_native_folder_dialog(initial_dir: str = "") -> str:
     """Opens a native Windows folder browser dialog."""
+    # Fast path: Native Windows .NET Forms via pythonnet (instant, zero process spawn overhead)
+    try:
+        import clr
+        clr.AddReference('System.Windows.Forms')
+        from System.Windows.Forms import FolderBrowserDialog, DialogResult
+        dialog = FolderBrowserDialog()
+        dialog.Description = "Select B-Roll Video Folder"
+        dialog.ShowNewFolderButton = False
+        if dialog.ShowDialog() == DialogResult.OK:
+            res = str(dialog.SelectedPath).strip()
+            if res:
+                return res
+    except Exception:
+        pass
+
     try:
         import tkinter as tk
         from tkinter import filedialog

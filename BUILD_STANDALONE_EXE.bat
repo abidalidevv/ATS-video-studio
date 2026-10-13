@@ -117,7 +117,8 @@ if not exist "dist\ATSAuthor\data\temp" mkdir "dist\ATSAuthor\data\temp"
 if not exist "dist\ATSAuthor\data\logs" mkdir "dist\ATSAuthor\data\logs"
 if exist "data\settings.json" (
     copy /y "data\settings.json" "dist\ATSAuthor\data\settings.json" >nul
-    echo       [+] Bundled data\settings.json
+    %PY_EXE% -c "import json; p=r'dist\ATSAuthor\data\settings.json'; s=json.load(open(p, 'r', encoding='utf-8')); s['output_dir']=''; s['broll_folder']=''; s['avatar_path']=''; json.dump(s, open(p, 'w', encoding='utf-8'), indent=2)" >nul 2>&1
+    echo       [+] Bundled clean portable data\settings.json
 )
 
 if not exist "dist\ATSAuthor\backend\assets\fonts" mkdir "dist\ATSAuthor\backend\assets\fonts"

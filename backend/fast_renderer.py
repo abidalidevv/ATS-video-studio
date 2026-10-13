@@ -184,13 +184,15 @@ def _build_filter_complex(
     # Build filter graph
     filters = []
 
-    # Step 1: Standardize stock footage to 1920x1080 (16:9 square pixels), apply slow-mo, single 30fps quantization
+    # Step 1: Standardize stock footage to 1920x1080 (16:9 square pixels), apply slow-mo via synthetic monotonic timestamps, single 30fps quantization
+    target_fps = 30
+    eff_fps = target_fps * max(0.1, float(speed_multiplier))
     bg_subfilters = [
         f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=increase:flags=fast_bilinear",
         f"crop={canvas_w}:{canvas_h}",
         "setsar=1",
-        f"setpts=PTS/{max(0.1, float(speed_multiplier)):.4f}",
-        "fps=30"
+        f"setpts=N/({eff_fps:.4f}*TB)",
+        f"fps={target_fps}"
     ]
     if blur_radius > 0:
         r = max(1, min(30, int(blur_radius)))
