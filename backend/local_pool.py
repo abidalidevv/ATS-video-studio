@@ -53,10 +53,33 @@ def probe_clip_info(clip_path: str) -> Dict[str, Any]:
         dur = float(data.get("format", {}).get("duration", 0.0))
         streams = data.get("streams", [])
         video_streams = [s for s in streams if s.get("codec_type") == "video" and s.get("width")]
-        w = int(video_streams[0]["width"]) if video_streams else 0
-        h = int(video_streams[0]["height"]) if video_streams else 0
+        vs = video_streams[0] if video_streams else {}
+        w = int(vs.get("width", 0))
+        h = int(vs.get("height", 0))
         has_audio = any(s.get("codec_type") == "audio" for s in streams)
         is_pure_video = len(streams) == 1 and bool(video_streams)
+        
+        r_fps = vs.get("r_frame_rate", "30/1")
+        try:
+            parts = r_fps.split("/")
+            fps_val = float(parts[0]) / float(parts[1]) if len(parts) == 2 else float(parts[0])
+        except Exception:
+            fps_val = 30.0
+        color_space = vs.get("color_space")
+        pix_fmt = vs.get("pix_fmt")
+
+        is_30fps = abs(fps_val - 30.0) < 0.15 or abs(fps_val - 29.97) < 0.05
+        is_std_color = color_space in (None, "bt709")
+        is_yuv420 = (pix_fmt == "yuv420p")
+
+        is_conformant = (
+            w == 1920 and h == 1080 and
+            is_pure_video and
+            is_30fps and
+            is_std_color and
+            is_yuv420
+        )
+
         info = {
             "duration": max(0.0, dur),
             "width": w,
@@ -64,6 +87,11 @@ def probe_clip_info(clip_path: str) -> Dict[str, Any]:
             "is_landscape": w >= h and w > 0,
             "has_audio": has_audio,
             "is_pure_video": is_pure_video,
+            "fps": fps_val,
+            "is_30fps": is_30fps,
+            "color_space": color_space,
+            "pix_fmt": pix_fmt,
+            "is_conformant": is_conformant,
             "exists": True
         }
         if dur > 0:
@@ -310,96 +338,102 @@ def prepare_clean_concat_clips(
         h = info.get("height", 1080)
         is_pure = info.get("is_pure_video", False)
 
-        # Case 1: Already native 1080p pure video — 100% Zero-Wait pass-through
-        if w == 1920 and h == 1080 and is_pure:
+        # Case 1: Already 100% conformant 1080p @ 30fps CFR pure video — Zero-Wait pass-through
+        if info.get("is_conformant", False):
             return idx, c
 
         p_hash = hashlib.md5(str(Path(raw_p).resolve()).encode('utf-8')).hexdigest()[:12]
 
-        # Case 2: Resolution mismatch (e.g. 720p, 4K, 2.7K) — normalize to 1920x1080 @ 30fps
-        # Uniform 1080p resolution across all clips is mandatory to prevent concat demuxer decoder stalls and OOM crashes!
-        if w != 1920 or h != 1080:
-            norm_file = out_dir / f"norm_1080p_{p_hash}.mp4"
-            norm_path = str(norm_file)
-            tmp_norm = out_dir / f"norm_1080p_{p_hash}.tmp.mp4"
+        # Case 2: Native 1080p @ 30fps with standard color/pix_fmt, but has extra audio or data tracks
+        # Fast stream-copy strip (-c:v copy -an -dn, <0.05s)
+        if (w == 1920 and h == 1080 and 
+            info.get("is_30fps", False) and 
+            info.get("color_space") in (None, "bt709") and 
+            info.get("pix_fmt") == "yuv420p"):
+            
+            clean_file = out_dir / f"pure_v_{p_hash}.mp4"
+            clean_path = str(clean_file)
+            tmp_clean = out_dir / f"pure_v_{p_hash}.tmp.mp4"
 
-            # Check existing file validity (must have valid moov atom)
-            is_valid = False
-            if norm_file.exists() and norm_file.stat().st_size > 1000:
-                chk = probe_clip_info(norm_path)
+            is_clean_valid = False
+            if clean_file.exists() and clean_file.stat().st_size > 1000:
+                chk = probe_clip_info(clean_path)
                 if chk.get("exists", False):
-                    is_valid = True
+                    is_clean_valid = True
                 else:
-                    norm_file.unlink(missing_ok=True)
+                    clean_file.unlink(missing_ok=True)
 
-            if not is_valid:
-                tmp_norm.unlink(missing_ok=True)
+            if not is_clean_valid:
+                tmp_clean.unlink(missing_ok=True)
                 cmd = [
                     ffmpeg, "-y", "-v", "error",
-                    "-threads", "2",
                     "-i", raw_p,
-                    "-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=30",
-                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                    "-c:v", "copy",
                     "-an", "-dn",
-                    str(tmp_norm)
+                    str(tmp_clean)
                 ]
                 try:
-                    subprocess.run(cmd, capture_output=True, check=True, timeout=120)
-                    if tmp_norm.exists() and tmp_norm.stat().st_size > 1000:
-                        tmp_norm.replace(norm_file)
+                    subprocess.run(cmd, capture_output=True, check=True, timeout=30)
+                    if tmp_clean.exists() and tmp_clean.stat().st_size > 1000:
+                        tmp_clean.replace(clean_file)
                     else:
                         return idx, None
                 except Exception as e:
-                    tmp_norm.unlink(missing_ok=True)
-                    print(f"[LocalPool] Normalization warning for {raw_p}: {e}")
+                    tmp_clean.unlink(missing_ok=True)
+                    print(f"[LocalPool] Stream copy warning for {raw_p}: {e}")
                     return idx, None
 
             if is_dict:
                 c_copy = dict(c)
-                c_copy["path"] = norm_path
+                c_copy["path"] = clean_path
                 return idx, c_copy
             else:
-                return idx, norm_path
+                return idx, clean_path
 
-        # Case 3: Native 1080p but contains extra audio or data streams — fast stream-copy strip (-c:v copy -an -dn, <0.05s)
-        clean_file = out_dir / f"pure_v_{p_hash}.mp4"
-        clean_path = str(clean_file)
-        tmp_clean = out_dir / f"pure_v_{p_hash}.tmp.mp4"
+        # Case 3: Disparate resolution (4K, 720p), framerate (24, 25, 50, 60fps), non-standard color (bt470bg, bt2020), or non-yuv420p
+        # Mandatory normalization to uniform 1920x1080 @ 30fps CFR yuv420p
+        # Prevents concat demuxer filter graph reconfigurations, timestamp jitter, and FFmpeg ENOMEM crashes!
+        norm_file = out_dir / f"norm_1080p_{p_hash}.mp4"
+        norm_path = str(norm_file)
+        tmp_norm = out_dir / f"norm_1080p_{p_hash}.tmp.mp4"
 
-        is_clean_valid = False
-        if clean_file.exists() and clean_file.stat().st_size > 1000:
-            chk = probe_clip_info(clean_path)
+        # Check existing file validity (must have valid moov atom)
+        is_valid = False
+        if norm_file.exists() and norm_file.stat().st_size > 1000:
+            chk = probe_clip_info(norm_path)
             if chk.get("exists", False):
-                is_clean_valid = True
+                is_valid = True
             else:
-                clean_file.unlink(missing_ok=True)
+                norm_file.unlink(missing_ok=True)
 
-        if not is_clean_valid:
-            tmp_clean.unlink(missing_ok=True)
+        if not is_valid:
+            tmp_norm.unlink(missing_ok=True)
             cmd = [
                 ffmpeg, "-y", "-v", "error",
+                "-threads", "2",
                 "-i", raw_p,
-                "-c:v", "copy",
+                "-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,fps=30,format=yuv420p",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
                 "-an", "-dn",
-                str(tmp_clean)
+                str(tmp_norm)
             ]
             try:
-                subprocess.run(cmd, capture_output=True, check=True, timeout=30)
-                if tmp_clean.exists() and tmp_clean.stat().st_size > 1000:
-                    tmp_clean.replace(clean_file)
+                subprocess.run(cmd, capture_output=True, check=True, timeout=120)
+                if tmp_norm.exists() and tmp_norm.stat().st_size > 1000:
+                    tmp_norm.replace(norm_file)
                 else:
                     return idx, None
             except Exception as e:
-                tmp_clean.unlink(missing_ok=True)
-                print(f"[LocalPool] Stream copy warning for {raw_p}: {e}")
+                tmp_norm.unlink(missing_ok=True)
+                print(f"[LocalPool] Normalization warning for {raw_p}: {e}")
                 return idx, None
 
         if is_dict:
             c_copy = dict(c)
-            c_copy["path"] = clean_path
+            c_copy["path"] = norm_path
             return idx, c_copy
         else:
-            return idx, clean_path
+            return idx, norm_path
 
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
         futures = [ex.submit(_clean_worker, i, c) for i, c in enumerate(clips)]

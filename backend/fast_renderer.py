@@ -188,9 +188,11 @@ def _build_filter_complex(
     target_fps = 30
     eff_fps = target_fps * max(0.1, float(speed_multiplier))
     bg_subfilters = [
+        "format=yuv420p",
         f"scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=increase:flags=fast_bilinear",
         f"crop={canvas_w}:{canvas_h}",
         "setsar=1",
+        f"settb=1/{target_fps}",
         f"setpts=N/({eff_fps:.4f}*TB)",
         f"fps={target_fps}"
     ]
